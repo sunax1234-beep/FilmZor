@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.FilmZorTV" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:colorBackground">#0f0f12</item>
+    </style>
+
+    <style name="Theme.FilmZorTV.Fullscreen" parent="Theme.FilmZorTV">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>
