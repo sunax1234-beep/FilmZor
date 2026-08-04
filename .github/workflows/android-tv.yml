@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "filmzor-tv/**"
+      - "filmzor-server/filmzor-tv/**"
       - ".github/workflows/android-tv.yml"
   workflow_dispatch:
 
@@ -27,11 +27,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
-        working-directory: filmzor-tv
+        working-directory: filmzor-server/filmzor-tv
         run: gradle assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: filmzor-tv-debug-apk
-          path: filmzor-tv/app/build/outputs/apk/debug/*.apk
+          path: filmzor-server/filmzor-tv/app/build/outputs/apk/debug/*.apk
