@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0f0f12;
+  --accent-a: #a855f7;
+  --accent-b: #ec4899;
+}
+
+* {
+  font-family: 'Poppins', system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a32; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a45; }
+
+.row-scroll { scrollbar-width: thin; scroll-behavior: smooth; }
+.row-scroll::-webkit-scrollbar { display: none; }
+.touch-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+
+.gradient-text {
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nav-active {
+  position: relative;
+  color: #fff;
+}
+.nav-active::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -10px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+}
+
+.pill { transition: all .2s ease; }
+.pill.active {
+  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 0 18px rgba(168,85,247,.45);
+}
+
+.movie-card {
+  transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s ease;
+}
+.movie-card:hover {
+  transform: translateY(-6px) scale(1.06);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.08),
+    0 10px 30px rgba(0,0,0,.6),
+    0 0 40px rgba(168,85,247,.55),
+    0 0 80px rgba(236,72,153,.25);
+  z-index: 20;
+}
+.movie-card .play-overlay {
+  opacity: 0;
+  transform: scale(.7);
+  transition: all .3s ease;
+}
+.movie-card:hover .play-overlay { opacity: 1; transform: scale(1); }
+.movie-card:hover .poster-shade { opacity: 1; }
+
+.row-arrow { opacity: 0; transition: opacity .2s ease, background .2s ease; }
+.row-wrap:hover .row-arrow { opacity: 1; }
+
+/* ---------------------------------------------------------------------
+   Smart TV / klávesnicová navigácia (šípky + Enter) — fialovo-biely glow.
+   `.tv-focus` je pridávaná/odoberaná dynamicky (viď useSpatialNavigation),
+   `:focus-visible` je fallback pre bežné Tab/klik-cez-klávesnicu ovládanie.
+--------------------------------------------------------------------- */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.tv-focus {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.85),
+    0 0 16px rgba(168,85,247,.65),
+    0 0 32px rgba(236,72,153,.35);
+}
+
+.movie-card:focus-visible,
+.movie-card.tv-focus {
+  transform: translateY(-6px) scale(1.06);
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.9),
+    0 10px 30px rgba(0,0,0,.6),
+    0 0 40px rgba(168,85,247,.65),
+    0 0 80px rgba(236,72,153,.3);
+  z-index: 20;
+}
+.movie-card:focus-visible .play-overlay,
+.movie-card.tv-focus .play-overlay { opacity: 1; transform: scale(1); }
+.movie-card:focus-visible .poster-shade,
+.movie-card.tv-focus .poster-shade { opacity: 1; }
+
+.pill:focus-visible,
+.pill.tv-focus {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 18px rgba(168,85,247,.6);
+}
