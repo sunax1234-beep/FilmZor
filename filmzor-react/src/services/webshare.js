@@ -1,4 +1,7 @@
-const BASE_URL = import.meta.env.VITE_WEBSHARE_API_URL || "http://localhost:4000";
+// Prázdny reťazec je platná (zámerná) hodnota — znamená "rovnaká doména ako
+// appka" (viď functions/api/[[path]].js, ktorý to proxuje na Fly backend),
+// preto "??", nie "||" (ten by "" nahradil fallbackom).
+const BASE_URL = import.meta.env.VITE_WEBSHARE_API_URL ?? "http://localhost:4000";
 
 async function handleResponse(res) {
   let data;

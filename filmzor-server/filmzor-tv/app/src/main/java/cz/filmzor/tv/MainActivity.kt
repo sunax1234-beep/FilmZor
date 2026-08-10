@@ -16,7 +16,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
 
-    private val appUrl = "https://filmzor.filmzor-react.workers.dev"
+    private val appUrl = "https://filmzor-react.filmzor-react.workers.dev"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {

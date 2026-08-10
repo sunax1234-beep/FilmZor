@@ -10,11 +10,14 @@ prepúšťa D-pad eventy ďalej.
 Appka smeruje na produkčnú URL frontendu (`MainActivity.kt` → `appUrl`):
 
 ```
-https://filmzor.filmzor-react.workers.dev
+https://filmzor-react.filmzor-react.workers.dev
 ```
 
-Frontend beží na Cloudflare Pages a backend na Fly.io (`https://filmzor.fly.dev`),
-appka teda funguje odkiaľkoľvek, nielen v domácej WiFi sieti.
+Frontend beží ako Cloudflare Worker (statické assety + `/api/*` proxy na
+backend, viď `filmzor-react/worker/index.js` — rieši cross-site cookie
+problém, session je vďaka tomu first-party) a backend na Fly.io
+(`https://filmzor.fly.dev`), appka teda funguje odkiaľkoľvek, nielen
+v domácej WiFi sieti.
 
 ## Build
 
