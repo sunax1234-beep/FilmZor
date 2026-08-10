@@ -435,7 +435,6 @@ export default function MovieModal({ item, language, onClose }) {
                     ref={videoRef}
                     key={playerUrl}
                     src={playerUrl}
-                    crossOrigin="use-credentials"
                     controls
                     autoPlay
                     onLoadedMetadata={handleLoadedMetadata}

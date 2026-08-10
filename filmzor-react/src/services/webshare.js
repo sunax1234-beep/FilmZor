@@ -64,7 +64,11 @@ export function getWebshareLink(ident, downloadType = "video_stream") {
 // URL nášho remux/streaming proxy endpointu — priamo ako <video src>.
 // Video sa kopíruje bez prekódovania, zvuk (často AC3/DTS pri CZ/SK dabingu,
 // ktoré prehliadač nevie prehrať) sa prekóduje na AAC, výstup je fragmentovaný
-// MP4. Vyžaduje session cookie, preto <video> potrebuje crossOrigin="use-credentials".
+// MP4. Vyžaduje session cookie — ide cez /api/* Worker proxy na rovnakej
+// doméne (viď worker/index.js), takže je to same-origin request a cookie sa
+// pošle automaticky bez potreby crossOrigin="use-credentials" na <video>
+// (ten by tu naopak prepol fetch do CORS-credentialed módu a spôsobil, že
+// prehliadač zdroj rovno odmietne ešte pred vyslaním requestu).
 export function getWebshareStreamUrl(ident) {
   return `${BASE_URL}/api/webshare/stream/${encodeURIComponent(ident)}`;
 }
