@@ -21,7 +21,7 @@ export default function MovieModal({ item, language, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const { loggedIn } = useWebshareAuth();
+  const { loggedIn, refresh: refreshAuth } = useWebshareAuth();
 
   // Séria/epizóda (len pre seriály) — kým nie je vybraná, zobrazuje sa picker namiesto výsledkov.
   const [episodeSelection, setEpisodeSelection] = useState(null);
@@ -237,6 +237,10 @@ export default function MovieModal({ item, language, onClose }) {
       setPendingFile(null);
     } catch (e) {
       if (e.status === 401) {
+        // Lokálny "loggedIn" stav môže byť zastaraný (napr. session medzičasom
+        // vypršala) — bez tohto refreshu by sa prihlasovací formulár nižšie
+        // nemusel zobraziť, lebo podmienka je `pendingFile && !loggedIn`.
+        await refreshAuth();
         setPendingFile(file);
         pendingResumeRef.current = resumeTime || 0;
       } else {

@@ -29,7 +29,10 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      sameSite: "lax",
+      // "none" v produkcii: frontend (Cloudflare) a backend (Fly.io) bežia na
+      // rôznych doménach, takže cookie je cross-site — "lax" by sa neposielala
+      // pri fetch/<video> requestoch. Vyžaduje secure: true (obe domény HTTPS).
+      sameSite: config.nodeEnv === "production" ? "none" : "lax",
       secure: config.nodeEnv === "production",
       maxAge: 1000 * 60 * 60 * 12, // 12 hodín
     },
