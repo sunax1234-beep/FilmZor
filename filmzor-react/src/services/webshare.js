@@ -55,20 +55,29 @@ export function searchWebshare({ title, originalTitle, alternateTitle, year, sea
 }
 
 // Predvolene žiadame streamovací odkaz (nie sťahovanie na disk) — používa sa
-// len ako kontrola prihlásenia (401 => treba login), samotné prehrávanie ide
-// cez getWebshareStreamUrl (viď nižšie).
+// len ako kontrola prihlásenia (401 => treba login). Zachované pre prípadné
+// iné použitie, ale prehrávanie samotné dnes namiesto tohto volá
+// getWebshareStreamMeta (auth-check + trvanie v jednom).
 export function getWebshareLink(ident, downloadType = "video_stream") {
   return postJson("/api/webshare/get-link", { ident, downloadType });
+}
+
+// Trvanie súboru (pre vlastnú seek lištu — natívne <video> trvanie u živého
+// remuxu nepozná) + zároveň kontrola prihlásenia pred spustením prehrávania.
+export function getWebshareStreamMeta(ident) {
+  return getJson(`/api/webshare/stream-meta/${encodeURIComponent(ident)}`);
 }
 
 // URL nášho remux/streaming proxy endpointu — priamo ako <video src>.
 // Video sa kopíruje bez prekódovania, zvuk (často AC3/DTS pri CZ/SK dabingu,
 // ktoré prehliadač nevie prehrať) sa prekóduje na AAC, výstup je fragmentovaný
 // MP4. Vyžaduje session cookie — ide cez /api/* Worker proxy na rovnakej
-// doméne (viď worker/index.js), takže je to same-origin request a cookie sa
-// pošle automaticky bez potreby crossOrigin="use-credentials" na <video>
-// (ten by tu naopak prepol fetch do CORS-credentialed módu a spôsobil, že
-// prehliadač zdroj rovno odmietne ešte pred vyslaním requestu).
-export function getWebshareStreamUrl(ident) {
-  return `${BASE_URL}/api/webshare/stream/${encodeURIComponent(ident)}`;
+// doméne (viď worker/index.js), takže je to same-origin request.
+// startSeconds > 0 => pretočenie na danú pozíciu (nový <video src>, ffmpeg sa
+// reštartuje s -ss na danom mieste — viď mediaProxy.js, prečo nejde o
+// štandardné HTTP Range seekovanie).
+export function getWebshareStreamUrl(ident, startSeconds = 0) {
+  const base = `${BASE_URL}/api/webshare/stream/${encodeURIComponent(ident)}`;
+  const t = Math.max(0, Number(startSeconds) || 0);
+  return t > 0 ? `${base}?t=${t.toFixed(2)}` : base;
 }

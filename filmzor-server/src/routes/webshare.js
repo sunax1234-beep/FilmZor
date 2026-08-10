@@ -2,7 +2,7 @@ import { Router } from "express";
 import { callWebshare, WebshareApiError } from "../services/webshareClient.js";
 import { webshareLoginDigest } from "../utils/md5crypt.js";
 import { searchMovieOnWebshare, searchEpisodeOnWebshare } from "../services/webshareMatcher.js";
-import { streamMovie } from "../services/mediaProxy.js";
+import { streamMovie, getSourceInfo } from "../services/mediaProxy.js";
 
 const router = Router();
 
@@ -218,16 +218,44 @@ router.post(
 );
 
 /**
- * GET /api/webshare/stream/:ident
+ * GET /api/webshare/stream-meta/:ident
+ *
+ * Vráti trvanie súboru (ffprobe, cachované v getSourceInfo) — frontend si to
+ * vyžiada raz pri spustení prehrávania, aby vedel vykresliť vlastnú seek
+ * lištu (natívne <video> trvanie nepozná, viď mediaProxy.js). Popri tom
+ * funguje aj ako auth-gate pred prehratím (nahrádza dovtedajšie samostatné
+ * volanie /get-link na ten istý účel).
+ */
+router.get(
+  "/stream-meta/:ident",
+  asyncHandler(async (req, res) => {
+    if (!req.session.wst) {
+      return res.status(401).json({
+        success: false,
+        error: "Na prehratie sa treba najprv prihlásiť cez /api/webshare/login.",
+      });
+    }
+
+    const { ident } = req.params;
+    if (!ident) {
+      return res.status(400).json({ success: false, error: "Chýba identifikátor súboru (ident)." });
+    }
+
+    const info = await getSourceInfo(ident, req.session.wst);
+    res.json({ success: true, duration: info.duration || 0 });
+  })
+);
+
+/**
+ * GET /api/webshare/stream/:ident?t=<sekundy>
  *
  * Živý remux prehrávania: video sa 1:1 kopíruje, zvuk sa prekóduje na AAC,
  * výstupom je fragmentovaný MP4 pipe-ovaný priamo do odpovede. Vďaka tomu
  * funguje spoľahlivo prehrávanie aj pre .mkv súbory s AC3/DTS zvukom, ktoré
- * by prehliadač inak vôbec neprehral. Podporuje aj Range hlavičku (seek) —
- * pozri services/mediaProxy.js pre detaily.
+ * by prehliadač inak vôbec neprehral. Voliteľný `?t=` spustí ffmpeg od danej
+ * pozície (pretáčanie) — pozri services/mediaProxy.js pre detaily.
  *
- * Používa sa priamo ako <video src>, preto vyžaduje session cookie
- * (crossOrigin="use-credentials" na frontende), nie Authorization hlavičku.
+ * Používa sa priamo ako <video src>, preto vyžaduje session cookie.
  */
 router.get(
   "/stream/:ident",
@@ -244,7 +272,7 @@ router.get(
       return res.status(400).json({ success: false, error: "Chýba identifikátor súboru (ident)." });
     }
 
-    await streamMovie({ ident, wst: req.session.wst, rangeHeader: req.headers.range, res });
+    await streamMovie({ ident, wst: req.session.wst, startSeconds: req.query.t, res });
   })
 );
 

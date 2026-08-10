@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDetails, posterUrl } from "../services/tmdb";
-import { searchWebshare, getWebshareLink, getWebshareStreamUrl } from "../services/webshare";
+import { searchWebshare, getWebshareStreamMeta, getWebshareStreamUrl } from "../services/webshare";
 import { useWebshareAuth } from "../context/WebshareAuthContext";
 import { formatQuality } from "../utils/quality";
 import {
@@ -9,11 +9,27 @@ import {
   isInProgress,
   saveWatchProgress,
 } from "../utils/watchProgress";
-import { CloseIcon, PlayIcon } from "./Icons";
+import { CloseIcon, PlayIcon, PauseIcon, VolumeIcon, MuteIcon, FullscreenIcon } from "./Icons";
 import SeasonEpisodePicker from "./SeasonEpisodePicker";
 import FileTableSkeleton from "./skeletons/FileTableSkeleton";
 
 const FALLBACK_LANGUAGE = { "sk-SK": "cs-CZ", "cs-CZ": "en-US" };
+
+// Seek na blízko konca súboru necháme rezervu (zhoduje sa s END_SAFETY_MARGIN_SECONDS
+// na backende) — presne na koniec by ffmpeg skončil bez jediného snímku.
+const SEEK_END_MARGIN_SECONDS = 3;
+const SEEK_NUDGE_SECONDS = 10;
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const total = Math.floor(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
 
 export default function MovieModal({ item, language, onClose }) {
   const [details, setDetails] = useState(null);
@@ -37,8 +53,26 @@ export default function MovieModal({ item, language, onClose }) {
   const [playerUrl, setPlayerUrl] = useState(null);
   const [playerFile, setPlayerFile] = useState(null);
 
+  // Vlastný prehrávač (nie natívne <video controls>) — živý remux stream nemá
+  // known duration/seek index (viď mediaProxy.js), takže natívne ovládanie by
+  // nevedelo zobraziť pozíciu ani umožniť pretáčanie. `duration` zisťujeme
+  // raz cez getWebshareStreamMeta, `baseOffsetRef` je `t`, s ktorým bol
+  // načítaný aktuálny <video src> — efektívna pozícia je súčet toho a
+  // video.currentTime (ktorý sa pri každom seeku/reloade vynuluje).
+  const [duration, setDuration] = useState(0);
+  const [playbackPosition, setPlaybackPosition] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragPreviewSeconds, setDragPreviewSeconds] = useState(null);
+  const [isMuted, setIsMuted] = useState(false);
+
   const videoRef = useRef(null);
-  const resumeTimeRef = useRef(0);
+  const playerContainerRef = useRef(null);
+  const sliderRef = useRef(null);
+  const baseOffsetRef = useRef(0);
+  const seekTimeoutRef = useRef(null);
+  const seekCommitTimerRef = useRef(null);
   const pendingResumeRef = useRef(0);
 
   const isTv = item?.mediaType === "tv";
@@ -101,6 +135,23 @@ export default function MovieModal({ item, language, onClose }) {
     }
   }, [item, isTv]);
 
+  // Zresetuje celý stav vlastného prehrávača (naspäť na zoznam súborov, zmena
+  // epizódy, nové vyhľadávanie) — bez toho by `duration`/`playbackPosition`
+  // z predošlého súboru presiakli do ďalšieho prehrávania.
+  function resetPlayerState() {
+    setPlayerUrl(null);
+    setPlayerFile(null);
+    setDuration(0);
+    setPlaybackPosition(0);
+    baseOffsetRef.current = 0;
+    setIsSeeking(false);
+    setIsPlaying(true);
+    setIsDragging(false);
+    setDragPreviewSeconds(null);
+    clearTimeout(seekTimeoutRef.current);
+    clearTimeout(seekCommitTimerRef.current);
+  }
+
   // Automatické vyhľadanie na Webshare — pri filme hneď, pri seriáli až po výbere epizódy.
   const runWebshareSearch = useCallback(
     async (signal) => {
@@ -112,8 +163,7 @@ export default function MovieModal({ item, language, onClose }) {
       setWsNoResults(false);
       setLinkError(null);
       setPendingFile(null);
-      setPlayerUrl(null);
-      setPlayerFile(null);
+      resetPlayerState();
       setWsLoading(true);
 
       // Český TMDB názov (cs-CZ) — Webshare je prevažne česká komunita a filmy
@@ -163,8 +213,7 @@ export default function MovieModal({ item, language, onClose }) {
       setWsError(null);
       setWsLooselyMatched(false);
       setWsNoResults(false);
-      setPlayerUrl(null);
-      setPlayerFile(null);
+      resetPlayerState();
       return;
     }
 
@@ -199,12 +248,15 @@ export default function MovieModal({ item, language, onClose }) {
   }, [item, onClose]);
 
   // Priebežné ukladanie rozpozerania (každých 5s + pri pauze/skončení/zatvorení) do localStorage.
+  // Používa app-sledovanú `duration`/pozíciu, nie video.duration/currentTime —
+  // video.duration je pre živý remux stream Infinity/NaN, takže predtým sa
+  // sem (potichu) nikdy nič neuložilo.
   useEffect(() => {
-    if (!playerUrl || !playerFile || !item) return;
+    if (!playerUrl || !playerFile || !item || !duration) return;
 
     function persist() {
       const video = videoRef.current;
-      if (!video || !video.duration || Number.isNaN(video.duration)) return;
+      const currentTime = baseOffsetRef.current + (video?.currentTime || 0);
       saveWatchProgress({
         id: item.id,
         mediaType: item.mediaType,
@@ -215,8 +267,8 @@ export default function MovieModal({ item, language, onClose }) {
         season: isTv ? episodeSelection?.season : undefined,
         episode: isTv ? episodeSelection?.episode?.episode_number : undefined,
         episodeName: isTv ? episodeSelection?.episode?.name : undefined,
-        currentTime: video.currentTime,
-        duration: video.duration,
+        currentTime,
+        duration,
         webshareIdent: playerFile.ident,
         webshareName: playerFile.name,
       });
@@ -236,19 +288,40 @@ export default function MovieModal({ item, language, onClose }) {
       video?.removeEventListener("ended", persist);
       persist();
     };
-  }, [playerUrl, playerFile, item, isTv, episodeSelection]);
+  }, [playerUrl, playerFile, item, isTv, episodeSelection, duration]);
+
+  // Spoločný vstupný bod pre "pokračovať v pozeraní" aj pre pretočenie počas
+  // prehrávania — oboje je len nové <video src> s presným ?t=, ffmpeg naň
+  // reštartuje presne na danej sekunde (viď mediaProxy.js).
+  function loadPlayerAt(file, startSeconds) {
+    const clampedStart = Math.max(0, startSeconds || 0);
+    baseOffsetRef.current = clampedStart;
+    setPlaybackPosition(clampedStart);
+    setIsSeeking(true);
+    clearTimeout(seekTimeoutRef.current);
+    // Poistka pre prípad, že ffmpeg potichu zlyhá a "playing" event nikdy nepríde.
+    seekTimeoutRef.current = setTimeout(() => setIsSeeking(false), 12000);
+    setPlayerUrl(getWebshareStreamUrl(file.ident, clampedStart));
+    setPlayerFile(file);
+  }
+
+  function commitSeek(targetSeconds) {
+    if (!playerFile || !duration) return;
+    const clamped = Math.max(0, Math.min(targetSeconds, Math.max(0, duration - SEEK_END_MARGIN_SECONDS)));
+    loadPlayerAt(playerFile, clamped);
+  }
 
   async function playFile(file, resumeTime = 0) {
     setLinkError(null);
     setLinkLoadingIdent(file.ident);
-    resumeTimeRef.current = resumeTime || 0;
     try {
-      // getWebshareLink tu slúži len ako kontrola prihlásenia (vyhodí 401,
-      // ak treba login) — samotné prehrávanie ide cez náš remux proxy,
-      // aby fungovalo aj pre .mkv/AC3 súbory, ktoré prehliadač priamo nevie.
-      await getWebshareLink(file.ident);
-      setPlayerUrl(getWebshareStreamUrl(file.ident));
-      setPlayerFile(file);
+      // getWebshareStreamMeta tu slúži ako kontrola prihlásenia (vyhodí 401,
+      // ak treba login) a zároveň zistí trvanie pre vlastnú seek lištu —
+      // samotné prehrávanie ide cez náš remux proxy, aby fungovalo aj pre
+      // .mkv/AC3 súbory, ktoré prehliadač priamo nevie.
+      const meta = await getWebshareStreamMeta(file.ident);
+      setDuration(meta.duration || 0);
+      loadPlayerAt(file, resumeTime);
       setPendingFile(null);
     } catch (e) {
       if (e.status === 401) {
@@ -278,11 +351,85 @@ export default function MovieModal({ item, language, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn]);
 
-  function handleLoadedMetadata() {
-    if (resumeTimeRef.current && videoRef.current) {
-      videoRef.current.currentTime = resumeTimeRef.current;
-      resumeTimeRef.current = 0;
+  function handleVideoPlaying() {
+    setIsSeeking(false);
+    clearTimeout(seekTimeoutRef.current);
+  }
+
+  function togglePlayPause() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play().catch(() => {});
+    else video.pause();
+  }
+
+  function toggleMute() {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+  }
+
+  function toggleFullscreen() {
+    const el = playerContainerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    } else {
+      el.requestFullscreen?.().catch(() => {});
     }
+  }
+
+  // Prevedie X-ovú súradnicu kliknutia/ťahania na seek lište na sekundy.
+  function seekSecondsFromClientX(clientX) {
+    const el = sliderRef.current;
+    if (!el || !duration) return 0;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    return ratio * duration;
+  }
+
+  function handleSliderPointerDown(e) {
+    if (!duration) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    setDragPreviewSeconds(seekSecondsFromClientX(e.clientX));
+  }
+
+  function handleSliderPointerMove(e) {
+    if (!isDragging) return;
+    setDragPreviewSeconds(seekSecondsFromClientX(e.clientX));
+  }
+
+  function handleSliderPointerUp(e) {
+    if (!isDragging) return;
+    const target = seekSecondsFromClientX(e.clientX);
+    setIsDragging(false);
+    setDragPreviewSeconds(null);
+    commitSeek(target);
+  }
+
+  // Šípky vľavo/vpravo posúvajú pozíciu o SEEK_NUDGE_SECONDS; stopPropagation
+  // je nutný, lebo useSpatialNavigation má globálny window keydown listener,
+  // ktorý by inak tie isté šípky zachytil a presunul fokus na susedný prvok
+  // namiesto pretočenia. Hore/dole necháme bublať ďalej (normálna D-pad
+  // navigácia mimo lišty). Držanie tlačidla (opakované keydown) sa batchuje
+  // do jedného seeku cez debounce timer, nech nespúšťa ffmpeg reštart pri
+  // každom stlačení.
+  function handleSliderKeyDown(e) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.key === "ArrowRight" ? SEEK_NUDGE_SECONDS : -SEEK_NUDGE_SECONDS;
+    const base = dragPreviewSeconds ?? playbackPosition;
+    const next = Math.max(0, Math.min(base + delta, duration));
+    setDragPreviewSeconds(next);
+    setIsDragging(true);
+    clearTimeout(seekCommitTimerRef.current);
+    seekCommitTimerRef.current = setTimeout(() => {
+      commitSeek(next);
+      setIsDragging(false);
+      setDragPreviewSeconds(null);
+    }, 450);
   }
 
   if (!item) return null;
@@ -298,6 +445,7 @@ export default function MovieModal({ item, language, onClose }) {
 
   const showEpisodePicker = isTv && !episodeSelection && !playerUrl;
   const showResults = !isTv || episodeSelection;
+  const displayPosition = isDragging && dragPreviewSeconds != null ? dragPreviewSeconds : playbackPosition;
 
   return (
     <div
@@ -422,26 +570,100 @@ export default function MovieModal({ item, language, onClose }) {
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs text-gray-400 truncate">{playerFile?.name}</p>
                     <button
-                      onClick={() => {
-                        setPlayerUrl(null);
-                        setPlayerFile(null);
-                      }}
+                      onClick={resetPlayerState}
                       className="text-xs font-semibold text-gray-400 hover:text-white shrink-0 transition-colors"
                     >
                       ← Späť na zoznam súborov
                     </button>
                   </div>
-                  <video
-                    ref={videoRef}
-                    key={playerUrl}
-                    src={playerUrl}
-                    controls
-                    autoPlay
-                    onLoadedMetadata={handleLoadedMetadata}
-                    className="w-full aspect-video rounded-xl bg-black ring-1 ring-white/10"
+
+                  <div
+                    ref={playerContainerRef}
+                    className="relative w-full aspect-video rounded-xl overflow-hidden bg-black ring-1 ring-white/10"
                   >
-                    Tvoj prehliadač nepodporuje prehrávanie tohto videa.
-                  </video>
+                    <video
+                      ref={videoRef}
+                      key={playerUrl}
+                      src={playerUrl}
+                      autoPlay
+                      onPlaying={handleVideoPlaying}
+                      onError={handleVideoPlaying}
+                      onPlay={() => setIsPlaying(true)}
+                      onPause={() => setIsPlaying(false)}
+                      onEnded={() => setIsPlaying(false)}
+                      onTimeUpdate={() =>
+                        setPlaybackPosition(baseOffsetRef.current + (videoRef.current?.currentTime || 0))
+                      }
+                      onVolumeChange={() => setIsMuted(videoRef.current?.muted ?? false)}
+                      onClick={togglePlayPause}
+                      className="w-full h-full"
+                    >
+                      Tvoj prehliadač nepodporuje prehrávanie tohto videa.
+                    </video>
+
+                    {isSeeking && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
+                        <div className="w-10 h-10 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      </div>
+                    )}
+
+                    <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-3 pt-10 pb-2.5">
+                      <div
+                        ref={sliderRef}
+                        role="slider"
+                        tabIndex={0}
+                        aria-label="Pozícia prehrávania"
+                        aria-valuemin={0}
+                        aria-valuemax={duration || 0}
+                        aria-valuenow={Math.round(displayPosition)}
+                        onPointerDown={handleSliderPointerDown}
+                        onPointerMove={handleSliderPointerMove}
+                        onPointerUp={handleSliderPointerUp}
+                        onKeyDown={handleSliderKeyDown}
+                        className="relative h-3 flex items-center cursor-pointer touch-none focus:outline-none"
+                      >
+                        <div className="w-full h-1.5 rounded-full bg-white/20">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500"
+                            style={{
+                              width: duration ? `${Math.min(100, (displayPosition / duration) * 100)}%` : "0%",
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={togglePlayPause}
+                          aria-label={isPlaying ? "Pauza" : "Prehrať"}
+                          className="text-white hover:text-fuchsia-400 transition-colors"
+                        >
+                          {isPlaying ? <PauseIcon className="w-6 h-6" /> : <PlayIcon className="w-6 h-6 ml-0.5" />}
+                        </button>
+                        <span className="text-xs text-gray-300 tabular-nums">
+                          {formatTime(displayPosition)} / {formatTime(duration)}
+                        </span>
+                        <div className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={toggleMute}
+                          aria-label={isMuted ? "Zapnúť zvuk" : "Stlmiť zvuk"}
+                          className="text-white hover:text-fuchsia-400 transition-colors"
+                        >
+                          {isMuted ? <MuteIcon className="w-5 h-5" /> : <VolumeIcon className="w-5 h-5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={toggleFullscreen}
+                          aria-label="Celá obrazovka"
+                          className="text-white hover:text-fuchsia-400 transition-colors"
+                        >
+                          <FullscreenIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <>
