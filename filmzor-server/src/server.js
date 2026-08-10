@@ -7,6 +7,13 @@ import { errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
 
+// Fly.io ukončuje TLS na svojom edge a k nášmu kontajneru posiela požiadavky
+// interne cez obyčajné HTTP — bez "trust proxy" si Express myslí, že spojenie
+// nie je HTTPS (req.secure === false), a express-session so secure:true
+// cookies potichu VÔBEC neposiela ("only send secure cookies via https").
+// S "trust proxy" Express namiesto toho číta X-Forwarded-Proto od Fly.
+app.set("trust proxy", 1);
+
 app.use(express.json());
 
 app.use(
