@@ -96,15 +96,12 @@ export async function streamMovie({ ident, wst, rangeHeader, res }) {
   const info = await getSourceInfo(ident, wst);
 
   let seekSeconds = 0;
-  let isPartial = false;
-  let rangeStart = 0;
 
   if (rangeHeader && info.size > 0) {
     const match = /bytes=(\d+)-/.exec(rangeHeader);
     if (match) {
-      rangeStart = Number(match[1]);
+      const rangeStart = Number(match[1]);
       if (rangeStart > 0) {
-        isPartial = true;
         const ratio = Math.min(rangeStart / info.size, 0.98);
         seekSeconds = info.duration ? ratio * info.duration : 0;
       }
@@ -128,17 +125,18 @@ export async function streamMovie({ ident, wst, rangeHeader, res }) {
 
   const ffmpeg = spawn(ffmpegPath, args);
 
+  // Content-Length sa TU nedá nastaviť — `info.size` je veľkosť PÔVODNÉHO
+  // súboru na Webshare, ale posiela sa prekódovaný výstup (iný zvukový
+  // kodek, iný kontajner) s úplne inou veľkosťou. Nesprávny Content-Length
+  // spôsobí, že klient/proxy čaká na bajty, ktoré nikdy nedorazia (alebo
+  // spojenie spadne, keď sa deklarovaný počet prekročí) — appka sa navonok
+  // tvári, že "chvíľu načítava a potom nič". Namiesto 206 s (nutne
+  // nepresným) Content-Range vraciame vždy 200 s chunked prenosom; seek
+  // funguje aj tak vďaka `-ss` reštartu ffmpeg vyššie, len nie je striktne
+  // spec-presný partial-content response.
   res.setHeader("Content-Type", "video/mp4");
   res.setHeader("Accept-Ranges", "bytes");
-
-  if (isPartial && info.size > 0) {
-    res.status(206);
-    res.setHeader("Content-Range", `bytes ${rangeStart}-${info.size - 1}/${info.size}`);
-    res.setHeader("Content-Length", info.size - rangeStart);
-  } else {
-    res.status(200);
-    if (info.size > 0) res.setHeader("Content-Length", info.size);
-  }
+  res.status(200);
 
   let stderrTail = "";
   ffmpeg.stderr.on("data", (chunk) => {
@@ -154,11 +152,9 @@ export async function streamMovie({ ident, wst, rangeHeader, res }) {
   });
 
   ffmpeg.on("close", (code) => {
-    if (code && code !== 0 && !res.writableEnded) {
+    if (code && code !== 0 && !res.writableEnded && stderrTail) {
       // Klient prerušil prehrávanie skôr, než ffmpeg dokončil — bežný jav pri seeku/zavretí, netreba logovať ako chybu.
-      if (stderrTail && process.env.NODE_ENV !== "production") {
-        console.error("[mediaProxy] ffmpeg skončilo s chybou:", stderrTail);
-      }
+      console.error("[mediaProxy] ffmpeg skončilo s chybou:", stderrTail);
     }
   });
 
