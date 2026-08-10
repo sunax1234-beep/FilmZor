@@ -41,11 +41,14 @@ export function logoutWebshare() {
   return postJson("/api/webshare/logout");
 }
 
-// Film: { title, originalTitle?, year? }
-// Epizóda seriálu: { title, originalTitle?, season, episode }
+// Film: { title, originalTitle?, alternateTitle?, year? }
+// Epizóda seriálu: { title, originalTitle?, alternateTitle?, season, episode }
+// alternateTitle = český TMDB názov (cs-CZ) — Webshare je prevažne česká komunita,
+// takže filmy s odlišným oficiálnym CZ marketingovým názvom (napr. "Zootopia" ->
+// "Město zvířat") sa bez neho často vôbec nenájdu.
 // Backend z toho odvodí a postupne vyskúša viac vyhľadávacích fráz (viď filmzor-server).
-export function searchWebshare({ title, originalTitle, year, season, episode } = {}) {
-  return postJson("/api/webshare/search", { title, originalTitle, year, season, episode });
+export function searchWebshare({ title, originalTitle, alternateTitle, year, season, episode } = {}) {
+  return postJson("/api/webshare/search", { title, originalTitle, alternateTitle, year, season, episode });
 }
 
 // Predvolene žiadame streamovací odkaz (nie sťahovanie na disk) — používa sa

@@ -117,14 +117,30 @@ export default function MovieModal({ item, language, onClose }) {
       setPlayerFile(null);
       setWsLoading(true);
 
+      // Český TMDB názov (cs-CZ) — Webshare je prevažne česká komunita a filmy
+      // s odlišným oficiálnym CZ marketingovým názvom (napr. "Zootopia" ->
+      // "Město zvířat") sa bez neho na Webshare vôbec nenájdu. Ak appka už
+      // zobrazuje cs-CZ, netreba dopytovať znova.
+      let alternateTitle = null;
+      if (language !== "cs-CZ") {
+        try {
+          const czData = await getDetails(item.mediaType, item.id, "cs-CZ");
+          alternateTitle = (isTv ? czData.name : czData.title) || null;
+        } catch {
+          alternateTitle = null;
+        }
+      }
+      if (signal?.cancelled) return;
+
       const params = isTv
         ? {
             title: item.title,
             originalTitle: item.originalTitle,
+            alternateTitle,
             season: episodeSelection.season,
             episode: episodeSelection.episode.episode_number,
           }
-        : { title: item.title, originalTitle: item.originalTitle, year: item.year };
+        : { title: item.title, originalTitle: item.originalTitle, alternateTitle, year: item.year };
 
       try {
         const data = await searchWebshare(params);

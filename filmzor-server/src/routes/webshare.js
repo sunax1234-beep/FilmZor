@@ -107,6 +107,7 @@ router.post(
     const {
       title,
       originalTitle,
+      alternateTitle,
       year,
       season,
       episode,
@@ -129,6 +130,7 @@ router.post(
     const opts = {
       title: primaryTitle ? String(primaryTitle).trim() : null,
       originalTitle: originalTitle ? String(originalTitle).trim() : null,
+      alternateTitle: alternateTitle ? String(alternateTitle).trim() : null,
       category,
       sort,
       limit,

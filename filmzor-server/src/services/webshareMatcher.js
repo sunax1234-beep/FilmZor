@@ -1,7 +1,10 @@
 import { callWebshare, toArray } from "./webshareClient.js";
 
 // Koľko top-priority fráz sa naraz posiela na Webshare (Promise.all) a zlučuje.
-const TOP_N = 4;
+// 6 (nie 4) — s pridaným českým alternatívnym názvom (viď alternateTitle nižšie)
+// by 4 sloty vyčerpali len rôzne varianty roku a fallback bez roku by sa už
+// vôbec nedostal na rad.
+const TOP_N = 6;
 // Koľko surových výsledkov sa natiahne z Webshare za KAŽDÚ frázu (pred filtrovaním).
 const WEBSHARE_FETCH_LIMIT = 50;
 
@@ -72,6 +75,16 @@ function stripStopwordsForQuery(text) {
   return words.length > 0 ? words.join(" ") : text;
 }
 
+// Časť názvu ZA poslednou dvojbodkou — franšízové názvy tvaru "Séria: Podnázov"
+// (napr. "Zootropolis: Město zvířat") niekedy zlyhajú ako celok, keď je slovo
+// PRED dvojbodkou na Webshare blokované/moderované (napr. "zoo*"), aj keď
+// samotný film reálne dostupný je. Samotný podnázov to obíde.
+function afterColon(text) {
+  if (!text || !text.includes(":")) return null;
+  const parts = text.split(":");
+  return parts[parts.length - 1].trim() || null;
+}
+
 // Celý názov súboru zlepený do jedného reťazca bez medzier/diakritiky/interpunkcie —
 // vďaka tomu "spider man" AJ "spiderman" nájdu ten istý "spiderman2002...".
 function compactAll(text) {
@@ -87,48 +100,69 @@ function addCandidate(list, seen, phrase, meta) {
 }
 
 // Film — generuje prioritne zoradené kandidátske frázy:
-//  [názov+rok] -> [originál+rok] -> [spojený originál+rok] -> [spojený názov+rok]
+//  [názov+rok] -> [originál+rok] -> [český názov+rok] -> [spojené varianty+rok]
 //  -> [názov+"1"+rok] -> [originál+"1"+rok] -> ... -> varianty bez roku.
 // "+1" varianty rieši prípad, keď uploaderi prvý diel série označia napr. "Spiderman 1".
-export function buildMovieQueryCandidates({ title, originalTitle, year }) {
+// `alternateTitle` je český TMDB názov (cs-CZ) — Webshare je prevažne česká
+// komunita a filmy s odlišným oficiálnym CZ marketingovým názvom (napr.
+// "Zootopia" -> "Město zvířat") sa inak vôbec nenájdu.
+export function buildMovieQueryCandidates({ title, originalTitle, alternateTitle, year }) {
   const titleSpaced = stripStopwordsForQuery(sanitizeSearchText(title));
   const titleJoined = stripStopwordsForQuery(sanitizeJoined(title));
   const origSpaced = stripStopwordsForQuery(sanitizeSearchText(originalTitle));
   const origJoined = stripStopwordsForQuery(sanitizeJoined(originalTitle));
+  const altSpaced = stripStopwordsForQuery(sanitizeSearchText(alternateTitle));
+  const altJoined = stripStopwordsForQuery(sanitizeJoined(alternateTitle));
 
-  const allowFirstInstallment = !hasDigit(titleSpaced) && !hasDigit(origSpaced);
+  const titleSubtitle = stripStopwordsForQuery(sanitizeSearchText(afterColon(title)));
+  const origSubtitle = stripStopwordsForQuery(sanitizeSearchText(afterColon(originalTitle)));
+  const altSubtitle = stripStopwordsForQuery(sanitizeSearchText(afterColon(alternateTitle)));
+
+  const allowFirstInstallment = !hasDigit(titleSpaced) && !hasDigit(origSpaced) && !hasDigit(altSpaced);
 
   const candidates = [];
   const seen = new Set();
 
   if (titleSpaced && year) addCandidate(candidates, seen, `${titleSpaced} ${year}`, { hasYear: true });
   if (origSpaced && year) addCandidate(candidates, seen, `${origSpaced} ${year}`, { hasYear: true });
+  if (altSpaced && year) addCandidate(candidates, seen, `${altSpaced} ${year}`, { hasYear: true });
+  // Podnázov (za dvojbodkou) hneď za plnými názvami — rieši prípad, keď je
+  // slovo PRED dvojbodkou na Webshare blokované (viď afterColon vyššie).
+  if (titleSubtitle && year) addCandidate(candidates, seen, `${titleSubtitle} ${year}`, { hasYear: true });
+  if (origSubtitle && year) addCandidate(candidates, seen, `${origSubtitle} ${year}`, { hasYear: true });
+  if (altSubtitle && year) addCandidate(candidates, seen, `${altSubtitle} ${year}`, { hasYear: true });
   if (origJoined && year) addCandidate(candidates, seen, `${origJoined} ${year}`, { hasYear: true });
   if (titleJoined && year) addCandidate(candidates, seen, `${titleJoined} ${year}`, { hasYear: true });
+  if (altJoined && year) addCandidate(candidates, seen, `${altJoined} ${year}`, { hasYear: true });
 
   if (allowFirstInstallment && year) {
     if (titleSpaced) addCandidate(candidates, seen, `${titleSpaced} 1 ${year}`, { hasYear: true });
     if (origSpaced) addCandidate(candidates, seen, `${origSpaced} 1 ${year}`, { hasYear: true });
-    if (origJoined) addCandidate(candidates, seen, `${origJoined} 1 ${year}`, { hasYear: true });
-    if (titleJoined) addCandidate(candidates, seen, `${titleJoined} 1 ${year}`, { hasYear: true });
+    if (altSpaced) addCandidate(candidates, seen, `${altSpaced} 1 ${year}`, { hasYear: true });
   }
 
   if (allowFirstInstallment) {
     if (titleSpaced) addCandidate(candidates, seen, `${titleSpaced} 1`, { hasYear: false });
     if (origSpaced) addCandidate(candidates, seen, `${origSpaced} 1`, { hasYear: false });
+    if (altSpaced) addCandidate(candidates, seen, `${altSpaced} 1`, { hasYear: false });
   }
 
   if (titleSpaced) addCandidate(candidates, seen, titleSpaced, { hasYear: false });
   if (origSpaced) addCandidate(candidates, seen, origSpaced, { hasYear: false });
+  if (altSpaced) addCandidate(candidates, seen, altSpaced, { hasYear: false });
+  if (titleSubtitle) addCandidate(candidates, seen, titleSubtitle, { hasYear: false });
+  if (origSubtitle) addCandidate(candidates, seen, origSubtitle, { hasYear: false });
+  if (altSubtitle) addCandidate(candidates, seen, altSubtitle, { hasYear: false });
 
   return { candidates };
 }
 
 // Epizóda seriálu — analogicky, prioritne s presným kódom SxxExx, na konci
 // fallback na celú sériu (Sxx), keby sa konkrétna epizóda nenašla.
-export function buildEpisodeQueryCandidates({ title, originalTitle, season, episode }) {
+export function buildEpisodeQueryCandidates({ title, originalTitle, alternateTitle, season, episode }) {
   const titleSpaced = stripStopwordsForQuery(sanitizeSearchText(title));
   const origSpaced = stripStopwordsForQuery(sanitizeSearchText(originalTitle));
+  const altSpaced = stripStopwordsForQuery(sanitizeSearchText(alternateTitle));
 
   const seasonNum = Number(season);
   const episodeNum = Number(episode);
@@ -145,11 +179,12 @@ export function buildEpisodeQueryCandidates({ title, originalTitle, season, epis
 
   if (titleSpaced) addCandidate(candidates, seen, `${titleSpaced} ${codeCompact}`, { hasCode: true });
   if (origSpaced) addCandidate(candidates, seen, `${origSpaced} ${codeCompact}`, { hasCode: true });
+  if (altSpaced) addCandidate(candidates, seen, `${altSpaced} ${codeCompact}`, { hasCode: true });
   if (titleSpaced) addCandidate(candidates, seen, `${titleSpaced} ${codeX}`, { hasCode: true });
   if (titleSpaced) addCandidate(candidates, seen, `${titleSpaced} ${codeSpaced}`, { hasCode: true });
   if (origSpaced) addCandidate(candidates, seen, `${origSpaced} ${codeX}`, { hasCode: true });
 
-  const seasonBase = titleSpaced || origSpaced;
+  const seasonBase = titleSpaced || origSpaced || altSpaced;
   if (seasonBase) addCandidate(candidates, seen, `${seasonBase} ${seasonOnly}`, { hasCode: false });
 
   return { candidates, codeCompact, seasonOnly };
@@ -260,9 +295,13 @@ function matchesAllWords(compactName, words) {
   return words.length > 0 && words.every((w) => compactName.includes(w));
 }
 
-function fileMatchesTitle(file, { titleWords, originalWords }) {
+// `wordSets` obsahuje viac zdrojov ako len title/original/alternate — patria
+// sem aj ich podnázvy za dvojbodkou (viď afterColon), lebo uploaderi bežne
+// vynechávajú franšízovú predponu ("Zootropolis: Město zvířat" -> len
+// "Město zvířat" v názve súboru).
+function fileMatchesTitle(file, wordSets) {
   const compactName = compactAll(file.name);
-  return matchesAllWords(compactName, titleWords) || matchesAllWords(compactName, originalWords);
+  return wordSets.some((words) => matchesAllWords(compactName, words));
 }
 
 // Pri epizódach navyše vyžadujeme, aby súbor obsahoval buď presný kód SxxExx,
@@ -273,8 +312,8 @@ function fileMatchesTitle(file, { titleWords, originalWords }) {
 // Sxx" by pri fallbacku bez presného kódu prepustilo AJ úplne iné epizódy tej
 // istej série (napr. E09 pri hľadaní E01). Fallback na celú sériu je preto
 // platný len vtedy, keď súbor neobsahuje kód ŽIADNEJ inej konkrétnej epizódy.
-function fileMatchesEpisode(file, { titleWords, originalWords, codeCompact, seasonOnly, seasonNum }) {
-  if (!fileMatchesTitle(file, { titleWords, originalWords })) return false;
+function fileMatchesEpisode(file, { wordSets, codeCompact, seasonOnly, seasonNum }) {
+  if (!fileMatchesTitle(file, wordSets)) return false;
 
   const compactName = compactAll(file.name);
   const compactCode = compactAll(codeCompact);
@@ -363,10 +402,10 @@ const MAX_EXTRA_WORDS = 1;
 // "The Odyssey 2026 CZ" -> navyše len rok+jazyk (očistené) -> 0 navyše -> OK.
 // "A Writer's Odyssey"  -> navyše "a" aj "writers" -> 2 navyše -> zamietnuté.
 // "Spider-Man 3"        -> navyše "3" (iný diel) -> zamietnuté aj pri count=1.
-function passesResidualCheck(file, { titleTokens, originalTokens }) {
+function passesResidualCheck(file, tokenSets) {
   const fileTokens = tokenizeFileResidual(file.name);
 
-  return [titleTokens, originalTokens].some((refTokens) => {
+  return tokenSets.some((refTokens) => {
     if (refTokens.length === 0) return false;
     const extra = getExtraWords(fileTokens, refTokens);
     return extra.length <= MAX_EXTRA_WORDS && !hasDisqualifyingSequelNumber(extra, refTokens);
@@ -439,9 +478,30 @@ async function aggregateQueries(candidates, queryOpts) {
   };
 }
 
+// Zostaví zoznamy slov/tokenov zo VŠETKÝCH zdrojov názvu (title/original/
+// alternate AJ ich podnázvy za dvojbodkou — viď afterColon) pre lokálne
+// porovnávanie súborov. Franšízová predpona pred dvojbodkou môže byť na
+// Webshare blokovaná/uploaderom vynechaná, aj keď film reálne existuje —
+// bez podnázvov by ho fileMatchesTitle/passesResidualCheck odmietli.
+function buildNameSources(title, originalTitle, alternateTitle) {
+  const names = [
+    title,
+    originalTitle,
+    alternateTitle,
+    afterColon(title),
+    afterColon(originalTitle),
+    afterColon(alternateTitle),
+  ];
+  return {
+    wordSets: names.map((n) => extractSignificantWords(n)),
+    tokenSets: names.map((n) => tokenizeRaw(n)),
+  };
+}
+
 export async function searchMovieOnWebshare({
   title,
   originalTitle,
+  alternateTitle,
   year,
   category = "video",
   sort = "largest",
@@ -449,7 +509,7 @@ export async function searchMovieOnWebshare({
   offset = 0,
   wst,
 } = {}) {
-  const { candidates } = buildMovieQueryCandidates({ title, originalTitle, year });
+  const { candidates } = buildMovieQueryCandidates({ title, originalTitle, alternateTitle, year });
   if (candidates.length === 0) {
     const err = new Error("Chýba názov na vyhľadávanie (title alebo originalTitle).");
     err.status = 400;
@@ -463,17 +523,14 @@ export async function searchMovieOnWebshare({
     wst,
   });
 
-  const titleWords = extractSignificantWords(title);
-  const originalWords = extractSignificantWords(originalTitle);
-  const titleTokens = tokenizeRaw(title);
-  const originalTokens = tokenizeRaw(originalTitle);
+  const { wordSets, tokenSets } = buildNameSources(title, originalTitle, alternateTitle);
 
   const validated = rawFiles.filter(
     (file) =>
       !isBlocked(file) &&
-      fileMatchesTitle(file, { titleWords, originalWords }) &&
+      fileMatchesTitle(file, wordSets) &&
       passesYearCheck(file, year) &&
-      passesResidualCheck(file, { titleTokens, originalTokens })
+      passesResidualCheck(file, tokenSets)
   );
   const deduped = dedupeByNameAndSize(validated);
   const files = sortFiles(deduped).slice(0, Number(limit) || 20);
@@ -489,6 +546,7 @@ export async function searchMovieOnWebshare({
 export async function searchEpisodeOnWebshare({
   title,
   originalTitle,
+  alternateTitle,
   season,
   episode,
   category = "video",
@@ -506,6 +564,7 @@ export async function searchEpisodeOnWebshare({
   const { candidates, codeCompact, seasonOnly } = buildEpisodeQueryCandidates({
     title,
     originalTitle,
+    alternateTitle,
     season,
     episode,
   });
@@ -522,16 +581,18 @@ export async function searchEpisodeOnWebshare({
     wst,
   });
 
-  const titleWords = extractSignificantWords(title);
-  const originalWords = extractSignificantWords(originalTitle);
-  const titleTokens = tokenizeRaw(title);
-  const originalTokens = tokenizeRaw(originalTitle);
+  const { wordSets, tokenSets } = buildNameSources(title, originalTitle, alternateTitle);
 
   const validated = rawFiles.filter(
     (file) =>
       !isBlocked(file) &&
-      fileMatchesEpisode(file, { titleWords, originalWords, codeCompact, seasonOnly, seasonNum: Number(season) }) &&
-      passesResidualCheck(withoutEpisodeCode(file), { titleTokens, originalTokens })
+      fileMatchesEpisode(file, {
+        wordSets,
+        codeCompact,
+        seasonOnly,
+        seasonNum: Number(season),
+      }) &&
+      passesResidualCheck(withoutEpisodeCode(file), tokenSets)
   );
   const deduped = dedupeByNameAndSize(validated);
   const files = sortFiles(deduped).slice(0, Number(limit) || 20);
