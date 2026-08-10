@@ -1,9 +1,14 @@
+import fs from "node:fs";
 import express from "express";
 import session from "express-session";
+import FileStoreFactory from "session-file-store";
 import cors from "cors";
 import { config } from "./config.js";
 import webshareRouter from "./routes/webshare.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+
+const FileStore = FileStoreFactory(session);
+fs.mkdirSync(config.sessionDir, { recursive: true });
 
 const app = express();
 
@@ -26,10 +31,9 @@ app.use(
   })
 );
 
-// Poznámka: MemoryStore je v poriadku pre lokálny vývoj/demo. Pre produkciu
-// s viacerými inštanciami servera nahraď trvalým store (napr. Redis).
 app.use(
   session({
+    store: new FileStore({ path: config.sessionDir, retries: 1, logFn: () => {} }),
     name: "filmzor.sid",
     secret: config.sessionSecret,
     resave: false,

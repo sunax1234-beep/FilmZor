@@ -25,8 +25,8 @@ export function WebshareAuthProvider({ children }) {
     refresh();
   }, [refresh]);
 
-  const login = useCallback(async (usernameInput, password) => {
-    const data = await loginWebshare(usernameInput, password);
+  const login = useCallback(async (usernameInput, password, rememberMe = false) => {
+    const data = await loginWebshare(usernameInput, password, rememberMe);
     setLoggedIn(true);
     setUsername(data.username);
     return data;

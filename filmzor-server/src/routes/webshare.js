@@ -79,6 +79,13 @@ router.post(
 
     req.session.wst = loginResponse.token;
     req.session.username = username;
+    // Predvolená cookie.maxAge (12h, nastavená v server.js) platí, kým
+    // používateľ výslovne nezaškrtne "Zapamätať si prihlásenie" — vtedy ju
+    // pre TÚTO session predĺžime, aby sa nemusel prihlasovať pri každej
+    // návšteve nanovo.
+    if (keepLoggedIn) {
+      req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30; // 30 dní
+    }
 
     res.json({
       success: true,

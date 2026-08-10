@@ -36,8 +36,8 @@ export function getWebshareSession() {
   return getJson("/api/webshare/session");
 }
 
-export function loginWebshare(username, password) {
-  return postJson("/api/webshare/login", { username, password, keepLoggedIn: true });
+export function loginWebshare(username, password, rememberMe = false) {
+  return postJson("/api/webshare/login", { username, password, keepLoggedIn: rememberMe });
 }
 
 export function logoutWebshare() {

@@ -5,6 +5,7 @@ export default function WebshareLoginForm({ onSuccess, onCancel }) {
   const { login } = useWebshareAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -13,7 +14,7 @@ export default function WebshareLoginForm({ onSuccess, onCancel }) {
     setSubmitting(true);
     setError(null);
     try {
-      await login(username, password);
+      await login(username, password, rememberMe);
       onSuccess();
     } catch (err) {
       setError(err.message);
@@ -53,6 +54,16 @@ export default function WebshareLoginForm({ onSuccess, onCancel }) {
           className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none placeholder:text-gray-500 focus:border-fuchsia-500/60"
         />
       </div>
+
+      <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={rememberMe}
+          onChange={(e) => setRememberMe(e.target.checked)}
+          className="rounded border-white/20 bg-white/5 text-fuchsia-500 focus:ring-fuchsia-500/60"
+        />
+        Zapamätať si prihlásenie
+      </label>
 
       <div className="flex gap-2">
         <button
