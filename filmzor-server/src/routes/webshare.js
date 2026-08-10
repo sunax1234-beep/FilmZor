@@ -40,7 +40,18 @@ router.post(
       return res.status(400).json({ success: false, error: "Chýba username alebo password." });
     }
 
-    const saltResponse = await callWebshare("/salt/", { username_or_email: username });
+    let saltResponse, loginResponse;
+    try {
+      saltResponse = await callWebshare("/salt/", { username_or_email: username });
+    } catch (e) {
+      // Webshare vracia na zlé/neexistujúce meno FATAL (my ho inak mapujeme
+      // na 502) — v kontexte loginu to takmer vždy znamená zlé údaje, nie
+      // pád servera, preto tu vracaiame 401 s jasnou správou namiesto toho.
+      if (e instanceof WebshareApiError) {
+        throw new WebshareApiError("Nesprávne prihlasovacie meno, alebo Webshare dočasne odmieta prihlásenie.", "LOGIN_REJECTED", 401);
+      }
+      throw e;
+    }
     const salt = saltResponse.salt;
 
     if (!salt) {
@@ -49,11 +60,18 @@ router.post(
 
     const digest = webshareLoginDigest(password, salt);
 
-    const loginResponse = await callWebshare("/login/", {
-      username_or_email: username,
-      password: digest,
-      keep_logged_in: keepLoggedIn ? 1 : 0,
-    });
+    try {
+      loginResponse = await callWebshare("/login/", {
+        username_or_email: username,
+        password: digest,
+        keep_logged_in: keepLoggedIn ? 1 : 0,
+      });
+    } catch (e) {
+      if (e instanceof WebshareApiError) {
+        throw new WebshareApiError("Nesprávne meno alebo heslo, alebo Webshare dočasne odmieta prihlásenie (napr. po viacerých neúspešných pokusoch).", "LOGIN_REJECTED", 401);
+      }
+      throw e;
+    }
 
     if (!loginResponse.token) {
       throw new WebshareApiError("Prihlásenie zlyhalo — Webshare nevrátilo token.", "NO_TOKEN", 401);
