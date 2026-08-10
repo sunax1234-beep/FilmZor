@@ -10,7 +10,6 @@ import {
   saveWatchProgress,
 } from "../utils/watchProgress";
 import { CloseIcon, PlayIcon } from "./Icons";
-import WebshareLoginForm from "./WebshareLoginForm";
 import SeasonEpisodePicker from "./SeasonEpisodePicker";
 import FileTableSkeleton from "./skeletons/FileTableSkeleton";
 
@@ -267,10 +266,17 @@ export default function MovieModal({ item, language, onClose }) {
     }
   }
 
-  async function handleLoginSuccess() {
-    const file = pendingFile;
-    if (file) await playFile(file, pendingResumeRef.current);
-  }
+  // Prihlásenie je len jedno globálne (vpravo hore v Header) — žiadny vlastný
+  // login formulár tu v modáli. Keď sa `loggedIn` zmení na true (užívateľ sa
+  // medzitým prihlásil hore), automaticky doskúsime prehratie súboru, na
+  // ktorý predtým kliklo (bez toho by musel znova klikať na "Prehrať").
+  useEffect(() => {
+    if (loggedIn && pendingFile) {
+      const file = pendingFile;
+      playFile(file, pendingResumeRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn]);
 
   function handleLoadedMetadata() {
     if (resumeTimeRef.current && videoRef.current) {
@@ -528,7 +534,18 @@ export default function MovieModal({ item, language, onClose }) {
                   {linkError && <p className="text-xs text-red-400">{linkError}</p>}
 
                   {pendingFile && !loggedIn && (
-                    <WebshareLoginForm onSuccess={handleLoginSuccess} onCancel={() => setPendingFile(null)} />
+                    <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3">
+                      <p className="text-xs text-amber-300 flex-1">
+                        Na prehratie sa treba prihlásiť k Webshare účtu — prihlás sa hore vpravo a skúsi sa to
+                        automaticky spustiť.
+                      </p>
+                      <button
+                        onClick={() => setPendingFile(null)}
+                        className="text-xs font-semibold text-gray-300 hover:text-white bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-full transition shrink-0"
+                      >
+                        Zrušiť
+                      </button>
+                    </div>
                   )}
                 </>
               )}
