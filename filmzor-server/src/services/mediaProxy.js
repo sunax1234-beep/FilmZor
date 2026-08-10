@@ -1,9 +1,15 @@
 import { spawn } from "node:child_process";
 import http from "node:http";
 import https from "node:https";
-import ffmpegPath from "ffmpeg-static";
-import ffprobeStatic from "ffprobe-static";
 import { callWebshare } from "./webshareClient.js";
+
+// Systémové ffmpeg/ffprobe (nainštalované cez apt v Dockerfile), NIE balíky
+// ffmpeg-static/ffprobe-static — ich zabalená statická binárka spoľahlivo
+// padala so SIGSEGV pri akomkoľvek HTTP vstupe v tomto kontajneri (Fly.io
+// Firecracker VM), nezávisle od konkrétneho súboru. Systémová binárka
+// zlinkovaná pre presne toto prostredie tento problém nemá.
+const ffmpegPath = "ffmpeg";
+const ffprobePath = "ffprobe";
 
 // Webshare odkazy majú obmedzenú platnosť — krátka cache nech pri seeku
 // (viacero requestov za sebou) nevoláme Webshare/ffprobe zakaždým znova.
@@ -34,7 +40,7 @@ function probeDuration(url) {
       "-of", "default=noprint_wrappers=1:nokey=1",
       url,
     ];
-    const proc = spawn(ffprobeStatic.path, args);
+    const proc = spawn(ffprobePath, args);
     let out = "";
     proc.stdout.on("data", (d) => (out += d));
     proc.on("close", () => {
@@ -123,6 +129,7 @@ export async function streamMovie({ ident, wst, rangeHeader, res }) {
     "pipe:1",
   ];
 
+  const spawnedAt = Date.now();
   const ffmpeg = spawn(ffmpegPath, args);
 
   // Content-Length sa TU nedá nastaviť — `info.size` je veľkosť PÔVODNÉHO
@@ -143,7 +150,13 @@ export async function streamMovie({ ident, wst, rangeHeader, res }) {
     stderrTail = (stderrTail + chunk.toString()).slice(-2000);
   });
 
+  let bytesWritten = 0;
+  ffmpeg.stdout.on("data", (chunk) => {
+    bytesWritten += chunk.length;
+  });
+
   ffmpeg.on("error", (err) => {
+    console.error("[mediaProxy] ffmpeg sa nepodarilo spustiť:", err.message);
     if (!res.headersSent) {
       res.status(500).json({ success: false, error: `ffmpeg sa nepodarilo spustiť: ${err.message}` });
     } else {
@@ -151,14 +164,31 @@ export async function streamMovie({ ident, wst, rangeHeader, res }) {
     }
   });
 
-  ffmpeg.on("close", (code) => {
-    if (code && code !== 0 && !res.writableEnded && stderrTail) {
-      // Klient prerušil prehrávanie skôr, než ffmpeg dokončil — bežný jav pri seeku/zavretí, netreba logovať ako chybu.
-      console.error("[mediaProxy] ffmpeg skončilo s chybou:", stderrTail);
+  ffmpeg.on("close", (code, signal) => {
+    const elapsedMs = Date.now() - spawnedAt;
+    // res.writableEnded tu nie je spoľahlivý indikátor "klient sa odpojil" —
+    // .pipe() zavolá res.end() automaticky aj keď ffmpeg skončí bez toho, že
+    // by čokoľvek zapísal, takže by to skutočné zlyhanie potichu zamaskovalo.
+    // Namiesto toho porovnávame, či reálne odišli nejaké dáta.
+    if (bytesWritten === 0) {
+      // Webshare občas priradí dočasne nedostupný CDN edge — zahoď cache,
+      // nech ďalší pokus (klik na "Prehrať" znova) dostane čerstvý odkaz
+      // namiesto opakovaného čakania na ten istý nefunkčný, až kým
+      // nevyprší CACHE_TTL_MS.
+      if (sourceCache.get(ident) === info) sourceCache.delete(ident);
+      console.error(
+        `[mediaProxy] ffmpeg skončil po ${elapsedMs}ms (kód ${code}, signal ${signal}) bez odoslania čo i len jedného bajtu, zdroj=${info.url}, stderr:`,
+        stderrTail || "(prázdne)"
+      );
+    } else if (code && code !== 0 && stderrTail) {
+      console.error(`[mediaProxy] ffmpeg skončil s chybou (kód ${code}) po ${bytesWritten} bajtoch:`, stderrTail);
     }
   });
 
   res.on("close", () => {
+    console.error(
+      `[mediaProxy] res 'close' po ${Date.now() - spawnedAt}ms (bytesWritten=${bytesWritten}, ffmpeg.killed=${ffmpeg.killed})`
+    );
     if (!ffmpeg.killed) ffmpeg.kill("SIGKILL");
   });
 
