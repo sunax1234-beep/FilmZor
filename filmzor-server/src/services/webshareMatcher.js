@@ -60,6 +60,18 @@ function extractSignificantWords(text) {
   return whole ? [whole] : [];
 }
 
+// Webshare "/search/" je len voľné plnotextové hľadanie (nie presná fráza) —
+// bežné slovo ako "the" sa trafí do tisícok nesúvisiacich súborov ("The.Neighbors",
+// "The.Lorax"...) a skutočnú zhodu to vytlačí mimo limitu, ktorý z Webshare
+// natiahneme (napr. "The Avengers 2012" nenájde nič, "Avengers 2012" áno).
+// Preto sa stopwords odstraňujú už zo samotného query stringu, nielen pri
+// lokálnom porovnávaní súborov (extractSignificantWords vyššie).
+function stripStopwordsForQuery(text) {
+  if (!text) return text;
+  const words = text.split(" ").filter((w) => w && !STOPWORDS.has(w.toLowerCase()));
+  return words.length > 0 ? words.join(" ") : text;
+}
+
 // Celý názov súboru zlepený do jedného reťazca bez medzier/diakritiky/interpunkcie —
 // vďaka tomu "spider man" AJ "spiderman" nájdu ten istý "spiderman2002...".
 function compactAll(text) {
@@ -79,10 +91,10 @@ function addCandidate(list, seen, phrase, meta) {
 //  -> [názov+"1"+rok] -> [originál+"1"+rok] -> ... -> varianty bez roku.
 // "+1" varianty rieši prípad, keď uploaderi prvý diel série označia napr. "Spiderman 1".
 export function buildMovieQueryCandidates({ title, originalTitle, year }) {
-  const titleSpaced = sanitizeSearchText(title);
-  const titleJoined = sanitizeJoined(title);
-  const origSpaced = sanitizeSearchText(originalTitle);
-  const origJoined = sanitizeJoined(originalTitle);
+  const titleSpaced = stripStopwordsForQuery(sanitizeSearchText(title));
+  const titleJoined = stripStopwordsForQuery(sanitizeJoined(title));
+  const origSpaced = stripStopwordsForQuery(sanitizeSearchText(originalTitle));
+  const origJoined = stripStopwordsForQuery(sanitizeJoined(originalTitle));
 
   const allowFirstInstallment = !hasDigit(titleSpaced) && !hasDigit(origSpaced);
 
@@ -115,8 +127,8 @@ export function buildMovieQueryCandidates({ title, originalTitle, year }) {
 // Epizóda seriálu — analogicky, prioritne s presným kódom SxxExx, na konci
 // fallback na celú sériu (Sxx), keby sa konkrétna epizóda nenašla.
 export function buildEpisodeQueryCandidates({ title, originalTitle, season, episode }) {
-  const titleSpaced = sanitizeSearchText(title);
-  const origSpaced = sanitizeSearchText(originalTitle);
+  const titleSpaced = stripStopwordsForQuery(sanitizeSearchText(title));
+  const origSpaced = stripStopwordsForQuery(sanitizeSearchText(originalTitle));
 
   const seasonNum = Number(season);
   const episodeNum = Number(episode);
