@@ -1,0 +1,21 @@
+# fly.toml app configuration file generated for filmzor on 2026-08-10T05:43:24Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'filmzor'
+primary_region = 'ams'
+
+[http_service]
+  auto_start_machines = true
+  auto_stop_machines = true
+  checks = [{ grace_period = '10s', interval = '30s', method = 'GET', path = '/health', timeout = '5s' }]
+  force_https = true
+  internal_port = 8080
+  min_machines_running = 0
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory = '512mb'
+  memory_mb = 256
