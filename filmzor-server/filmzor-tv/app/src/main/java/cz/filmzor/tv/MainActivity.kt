@@ -16,9 +16,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
 
-    // LAN adresa FilmZor frontendu bežiaceho na PC (musí byť v tej istej WiFi ako TV).
-    // Po nasadení do cloudu stačí zmeniť na verejnú https:// URL.
-    private val appUrl = "http://192.168.10.11:5180"
+    private val appUrl = "https://filmzor.filmzor-react.workers.dev"
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {

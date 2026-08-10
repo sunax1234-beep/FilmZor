@@ -7,18 +7,14 @@ prepúšťa D-pad eventy ďalej.
 
 ## Nastavenie URL
 
-Appka teraz smeruje na LAN adresu (`MainActivity.kt` → `appUrl`):
+Appka smeruje na produkčnú URL frontendu (`MainActivity.kt` → `appUrl`):
 
 ```
-http://192.168.10.11:5180
+https://filmzor.filmzor-react.workers.dev
 ```
 
-TV zariadenie musí byť **v tej istej WiFi sieti** ako počítač, na ktorom beží
-`npm run dev -- --host 0.0.0.0` (frontend) a backend server. Ak sa PC IP adresa
-zmení, uprav `appUrl` v `MainActivity.kt` a appku znova zostav.
-
-Po prípadnom nasadení backendu/frontendu do cloudu stačí `appUrl` zmeniť na
-verejnú `https://` adresu — appka bude fungovať aj mimo domácej siete.
+Frontend beží na Cloudflare Pages a backend na Fly.io (`https://filmzor.fly.dev`),
+appka teda funguje odkiaľkoľvek, nielen v domácej WiFi sieti.
 
 ## Build
 
