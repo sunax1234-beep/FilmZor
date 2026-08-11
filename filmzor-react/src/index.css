@@ -137,6 +137,20 @@ select:focus-visible,
     0 8px 16px rgba(0,0,0,.6);
 }
 
+/* 10-foot UI: Tailwindove "text-" a "spacing-" utility triedy sú v `rem`,
+   takže zväčšenie base font-size tu automaticky pomerovo zväčší text aj
+   odsadenie naprieč všetkými znovupoužitými komponentmi (MovieCard,
+   FilterPanel pills, nadpisy...) bez toho, aby ich bolo treba upravovať
+   jednotlivo. */
+html.tv-mode {
+  font-size: 130%;
+}
+
+.tv-mode .movie-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.75rem 2.25rem;
+}
+
 .tv-mode .movie-card .play-overlay > div {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;

@@ -9,6 +9,11 @@ export function posterUrl(path, size = "w500") {
   return `${IMAGE_BASE_URL}/${size}${path}`;
 }
 
+export function backdropUrl(path, size = "w1280") {
+  if (!path) return null;
+  return `${IMAGE_BASE_URL}/${size}${path}`;
+}
+
 async function tmdbFetch(path, params = {}) {
   if (!API_KEY) {
     throw new Error("Chýba VITE_TMDB_API_KEY — skopíruj .env.example do .env a doplň API kľúč.");

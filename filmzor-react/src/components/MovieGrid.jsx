@@ -34,7 +34,7 @@ export default function MovieGrid({ title, items, genreLookup, loading, error, o
       )}
 
       {!error && !initialLoading && items.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
+        <div className="movie-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-x-5 gap-y-8">
           {items.map((item) => (
             <MovieCard
               key={`${item.mediaType}-${item.id}`}

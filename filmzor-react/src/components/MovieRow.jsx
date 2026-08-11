@@ -2,7 +2,13 @@ import { useRef } from "react";
 import MovieCard from "./MovieCard";
 import { ChevronLeft, ChevronRight } from "./Icons";
 
-export default function MovieRow({ title, movies, genreLookup, onSelect }) {
+export default function MovieRow({
+  title,
+  movies,
+  genreLookup,
+  onSelect,
+  cardWidthClassName = "w-36 sm:w-44 md:w-52 shrink-0",
+}) {
   const scrollRef = useRef(null);
 
   const scroll = (direction) => {
@@ -37,7 +43,7 @@ export default function MovieRow({ title, movies, genreLookup, onSelect }) {
               item={item}
               genreLabel={genreLookup(item)}
               onClick={onSelect}
-              sizeClassName="w-36 sm:w-44 md:w-52 shrink-0"
+              sizeClassName={cardWidthClassName}
             />
           ))}
         </div>
