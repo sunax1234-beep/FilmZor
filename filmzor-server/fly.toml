@@ -1,4 +1,4 @@
-app = "filmzor-webshare-backend"
+app = "filmzor"
 primary_region = "fra"
 
 [build]

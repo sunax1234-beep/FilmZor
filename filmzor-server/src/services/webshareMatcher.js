@@ -19,6 +19,7 @@ import { callWebshare, toArray } from "./webshareClient.js";
  * @property {string} title
  * @property {string} fileId
  * @property {number} size
+ * @property {boolean} yearConfirmed - či názov súboru obsahuje hľadaný rok (+/-1); `false` neznamená zlú zhodu, len nižšiu prioritu (viď sortFiles)
  */
 
 /**
@@ -262,13 +263,18 @@ function extractYearsFromName(name) {
   return matches.map(Number);
 }
 
-// Ak súbor uvádza INÝ explicitný rok než hľadaný, zahoď ho. Súbory bez
-// akéhokoľvek roku v názve netrestáme (nevieme posúdiť).
-function passesYearCheck(file, year) {
-  if (!year) return true;
+// Rok +/-1 tolerancia (release dátumy sa medzi trhmi/edíciami mierne líšia).
+// Súbor s rokom MIMO tolerancie sa zahodí (`passes: false`) — inak by sa
+// napr. pri hľadaní "Spider-Man" (2002) natiahli aj jeho pokračovania z
+// iných rokov. Súbor BEZ akéhokoľvek roku v názve sa nezahadzuje (nevieme
+// posúdiť), len dostane `confirmed: false` a teda nižšiu prioritu v sortFiles.
+function evaluateYear(file, year) {
+  if (!year) return { passes: true, confirmed: false };
   const yearsInName = extractYearsFromName(file.name);
-  if (yearsInName.length === 0) return true;
-  return yearsInName.includes(Number(year));
+  if (yearsInName.length === 0) return { passes: true, confirmed: false };
+  const target = Number(year);
+  const withinTolerance = yearsInName.some((y) => Math.abs(y - target) <= 1);
+  return { passes: withinTolerance, confirmed: withinTolerance };
 }
 
 // Odstráni súbory s rovnakým názvom AJ rovnakou veľkosťou (rôzne re-uploady/
@@ -286,17 +292,91 @@ function dedupeByNameAndSize(files) {
   return result;
 }
 
-// 1. Plná kvalita (BluRay/WEB-DL/HD) podľa veľkosti zostupne, CZ/SK zvuk
-//    uprednostnený pri porovnateľnej veľkosti.
-// 2. CAM/TELESYNC súbory úplne na koniec zoznamu (aj tak zoradené podľa veľkosti).
+// Skutočný CZ/SK DABING (zvuková stopa), nie len prítomnosť CZ/SK jazykového
+// tagu — ten istý "CZ" tag sa na Webshare bežne píše aj pri súboroch, ktoré
+// majú cudzí zvuk a len CZ/SK TITULKY (napr. "EN.CZtit", "CZ titulky").
+// Ak je súbor označený ako titulky (`hasSubtitles`) a názov neobsahuje
+// explicitné slovo "dab"/"dabing", ide skôr o titulky k cudziemu zvuku než
+// o dabing, aj keď CZ/SK jazykový tag sedí.
+function hasCzSkDub(file) {
+  const hasCzOrSk = file.languages.includes("CZ") || file.languages.includes("SK");
+  if (!hasCzOrSk) return false;
+  if (file.hasSubtitles && !/\bdab(ing)?\b/i.test(file.name)) return false;
+  return true;
+}
+
+// 1. CAM/TELESYNC súbory úplne na koniec zoznamu bez ohľadu na čokoľvek iné.
+// 2. CZ/SK DABING pred cudzím dabingom/titulkami — toto je hlavné triedenie,
+//    ktoré chce používateľ vidieť ako dva bloky výsledkov.
+// 3. Súbory s potvrdeným rokom v názve (yearConfirmed) pred tými, kde rok
+//    chýba a teda ho nevieme overiť — "nižšia priorita, nie zahodenie".
+// 4. Väčšia veľkosť súboru napokon (v rámci bloku/roku = lepšia kvalita).
 function sortFiles(files) {
   return [...files].sort((a, b) => {
     if (a.isCam !== b.isCam) return a.isCam ? 1 : -1;
-    const aPreferred = a.languages.includes("CZ") || a.languages.includes("SK");
-    const bPreferred = b.languages.includes("CZ") || b.languages.includes("SK");
-    if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+    if (a._czSkDub !== b._czSkDub) return a._czSkDub ? -1 : 1;
+    if (a.yearConfirmed !== b.yearConfirmed) return a.yearConfirmed ? -1 : 1;
     return b.sizeBytes - a.sizeBytes;
   });
+}
+
+// Veľkostné pásma (GB), zhora nadol — použité na to, aby výsledný zoznam
+// obsahoval aj menšie súbory, nielen samé niekoľko desiatok GB veľké remuxy.
+const SIZE_TIER_BOUNDARIES_GB = [15, 8, 4, 2, 0];
+
+function sizeTierIndex(sizeBytes) {
+  const gb = sizeBytes / 1024 ** 3;
+  return SIZE_TIER_BOUNDARIES_GB.findIndex((bound) => gb >= bound);
+}
+
+// Namiesto čistého "prvých N podľa veľkosti" (čo by pri dostatku veľkých
+// súborov vrátilo len samé desiatky GB ťažké remuxy) sa vyberá striedavo po
+// jednom z každého veľkostného pásma — najprv najväčší z každého pásma,
+// potom druhý najväčší z každého atď., kým sa nenaplní `limit`. Poradie
+// súborov v rámci pásma (CAM/dabing/rok/veľkosť z `sortFiles`) ostáva
+// zachované, diverzita sa pridáva navyše, nie namiesto.
+function selectSizeDiverse(files, limit) {
+  if (files.length <= limit) return files;
+
+  const tiers = new Map();
+  for (const file of files) {
+    const tier = sizeTierIndex(file.sizeBytes);
+    if (!tiers.has(tier)) tiers.set(tier, []);
+    tiers.get(tier).push(file);
+  }
+  const tierOrder = Array.from(tiers.keys()).sort((a, b) => a - b);
+
+  const selected = [];
+  for (let round = 0; selected.length < limit; round++) {
+    let addedThisRound = false;
+    for (const tier of tierOrder) {
+      if (selected.length >= limit) break;
+      const bucket = tiers.get(tier);
+      if (round < bucket.length) {
+        selected.push(bucket[round]);
+        addedThisRound = true;
+      }
+    }
+    if (!addedThisRound) break;
+  }
+  return selected;
+}
+
+// Finálny výber do `limit` výsledkov: CZ/SK dabing blok (veľkostne
+// diverzifikovaný) PRED cudzím dabingom/titulkami blokom (tiež
+// diverzifikovaným) — cudzí blok doplní len toľko miest, koľko po CZ/SK
+// bloku ostane voľných.
+export function selectDiverseTop(sortedFiles, limit) {
+  const czSk = sortedFiles.filter((f) => f._czSkDub && !f.isCam);
+  const foreign = sortedFiles.filter((f) => !f._czSkDub && !f.isCam);
+  const cam = sortedFiles.filter((f) => f.isCam);
+
+  const czSkPicked = selectSizeDiverse(czSk, limit);
+  const foreignPicked = selectSizeDiverse(foreign, Math.max(0, limit - czSkPicked.length));
+  const rest = [...czSkPicked, ...foreignPicked];
+  const camPicked = selectSizeDiverse(cam, Math.max(0, limit - rest.length));
+
+  return [...rest, ...camPicked];
 }
 
 // ---------------------------------------------------------------------------
@@ -351,15 +431,17 @@ export function groupFilesIntoSeries(files, seriesTitle) {
 }
 
 /**
- * Hlavná funkcia: príjme surové Webshare file objekty (z `/search/`
- * odpovede) a vráti vyfiltrované, namapované dáta.
+ * Hlavná funkcia: príjme surové (už zlúčené naprieč aliasmi) Webshare file
+ * objekty a vráti vyfiltrované, namapované dáta. Súbor prejde, ak sedí
+ * ASPOŇ NA JEDEN z `titles` (originálny/CZ/SK alias) — nemusí sedieť na
+ * všetky naraz.
  *
  * @param {any[]} rawFiles - surové objekty z Webshare `/search/` (ident, name, size, type, ...)
- * @param {{mode?: "movie"|"series", title?: string, originalTitle?: string, alternateTitle?: string, year?: number|string|null}} opts
+ * @param {{mode?: "movie"|"series", titles: string[], year?: number|string|null}} opts
  * @returns {Movie[]|Series[]}
  */
-export function parseWebshareResults(rawFiles, { mode = "movie", title, originalTitle, alternateTitle, year } = {}) {
-  const nameSources = [title, originalTitle, alternateTitle].filter(Boolean);
+export function parseWebshareResults(rawFiles, { mode = "movie", titles = [], year } = {}) {
+  const nameSources = titles.filter(Boolean);
   const keywordSets = nameSources.map(extractKeywords);
   const primaryTitle = nameSources[0] || "";
 
@@ -367,7 +449,9 @@ export function parseWebshareResults(rawFiles, { mode = "movie", title, original
     .map(normalizeFile)
     .filter((file) => !isBlocked(file))
     .filter((file) => matchesAnyTitleSource(file, keywordSets))
-    .filter((file) => passesYearCheck(file, year));
+    .map((file) => ({ file, yearInfo: evaluateYear(file, year) }))
+    .filter(({ yearInfo }) => yearInfo.passes)
+    .map(({ file, yearInfo }) => ({ ...file, yearConfirmed: yearInfo.confirmed, _czSkDub: hasCzSkDub(file) }));
 
   const files = sortFiles(dedupeByNameAndSize(matched));
 
@@ -383,15 +467,20 @@ export function parseWebshareResults(rawFiles, { mode = "movie", title, original
 // 6. Webshare API — vyhľadávanie a verejné vstupné body pre routes/webshare.js
 // ---------------------------------------------------------------------------
 
-// Vyšší limit než predtým (bývalých 50 na jednu z až 6 paralelných fráz) —
-// kompenzuje, že teraz ide len JEDNA holá fráza na dopyt namiesto viacerých
-// cielenejších variantov (viď fetchRawFiles nižšie).
+// Vyšší limit než pôvodných 50 — kompenzuje, že na dopyt ide len JEDNA holá
+// fráza namiesto viacerých cielenejších variantov (rok/SxxExx v dopyte).
 const WEBSHARE_FETCH_LIMIT = 100;
+
+// Koľko aliasov z `titles` sa naraz posiela na Webshare (Promise.all).
+// Viac než 3 väčšinou len naťahuje čas odpovede bez reálneho prínosu —
+// ďalšie aliasy (napr. 4. a 5. v poli) sa v praxi zvyčajne prekrývajú
+// s prvými tromi (originál/CZ/SK).
+const DEFAULT_MAX_PARALLEL_TITLES = 3;
 
 // Pošle na Webshare `/search/` IBA holý názov (žiadny rok, SxxExx kód ani
 // kvalita v dopyte) — všetko filtrovanie/priraďovanie k sériám/zahadzovanie
 // nesprávnych výsledkov beží lokálne v parseWebshareResults nad výsledným poľom.
-async function fetchRawFiles(queryTitle, { category, sort, offset, wst }) {
+async function fetchRawFilesForTitle(queryTitle, { category, sort, offset, wst }) {
   if (!queryTitle) return [];
   const response = await callWebshare("/search/", {
     what: queryTitle,
@@ -404,27 +493,70 @@ async function fetchRawFiles(queryTitle, { category, sort, offset, wst }) {
   return toArray(response.file);
 }
 
-// Skúsi zdroje názvu (lokalizovaný, originálny, český alternatívny) jeden po
-// druhom, vždy jednu holú frázu naraz — na ďalší siahne len vtedy, keď
-// predchádzajúci nič nevrátil (rieši prípad, keď je Webshare komunita
-// prevažne česká a lokalizovaný SK/EN názov nič nenájde).
-async function fetchRawFilesWithFallback(nameSources, queryOpts) {
-  for (const candidate of nameSources) {
-    const raw = await fetchRawFiles(candidate, queryOpts);
-    if (raw.length > 0) return { rawFiles: raw, queriedTitle: candidate };
-  }
-  return { rawFiles: [], queriedTitle: nameSources[0] || null };
+// Multi-Title/Alias Search: concurrent fetch (Promise.all) cez prvých
+// `maxParallelTitles` aliasov naraz — originálny aj CZ/SK názov sa hľadajú
+// súčasne namiesto sekvenčného "skús jeden, potom druhý", pretože uploaderi
+// na Webshare nie sú konzistentní v tom, pod akým regionálnym názvom súbor
+// pomenujú. Výsledky sa zlúčia a odduplikujú podľa Webshare `ident`
+// (ten istý súbor sa môže vrátiť pri viacerých aliasoch naraz).
+async function fetchAndMergeRawFiles(titles, { category, sort, offset, wst, maxParallelTitles = DEFAULT_MAX_PARALLEL_TITLES } = {}) {
+  const queriedTitles = titles.filter(Boolean).slice(0, maxParallelTitles);
+  const resultsPerTitle = await Promise.all(
+    queriedTitles.map((t) => fetchRawFilesForTitle(t, { category, sort, offset, wst }))
+  );
+
+  const merged = new Map();
+  resultsPerTitle.forEach((files) => {
+    for (const file of files) {
+      const key = file.ident ?? file.id;
+      if (key == null || merged.has(key)) continue;
+      merged.set(key, file);
+    }
+  });
+
+  return { rawFiles: Array.from(merged.values()), queriedTitles };
 }
 
-function requireNameSources({ title, originalTitle, alternateTitle }) {
-  const nameSources = [title, originalTitle, alternateTitle].filter(Boolean);
-  if (nameSources.length === 0) {
-    const err = new Error("Chýba názov na vyhľadávanie (title alebo originalTitle).");
+function requireTitles(titles) {
+  const cleaned = (titles || []).filter(Boolean);
+  if (cleaned.length === 0) {
+    const err = new Error("Chýba aspoň jeden názov na vyhľadávanie (titles).");
     err.status = 400;
     throw err;
   }
-  return nameSources;
+  return cleaned;
 }
+
+/**
+ * Priamy vstupný bod pre Multi-Title/Alias Search: concurrent fetch cez
+ * pole regionálnych aliasov, zlúčenie+dedup, lokálny fuzzy filter voči
+ * VŠETKÝM aliasom naraz a rok +/-1 tolerancia.
+ *
+ * @param {string[]} titles - napr. ["Odysea", "Oddysea", "The Odyssey"], v poradí dôležitosti
+ * @param {{ year?: number|null, mode?: "movie"|"series", category?: string, sort?: string, limit?: number, offset?: number, wst?: string, maxParallelTitles?: number }} opts
+ * @returns {Promise<Movie[]|Series[]>}
+ */
+export async function searchTitlesOnWebshare(titles, {
+  year = null,
+  mode = "movie",
+  category = "video",
+  sort = "largest",
+  limit = 10,
+  offset = 0,
+  wst,
+  maxParallelTitles = DEFAULT_MAX_PARALLEL_TITLES,
+} = {}) {
+  const cleanTitles = requireTitles(titles);
+  const { rawFiles } = await fetchAndMergeRawFiles(cleanTitles, { category, sort, offset, wst, maxParallelTitles });
+  const results = parseWebshareResults(rawFiles, { mode, titles: cleanTitles, year });
+  return mode === "series" ? results : selectDiverseTop(results, Number(limit) || 10);
+}
+
+// ---------------------------------------------------------------------------
+// 7. routes/webshare.js kontrakt — nezmenený vstup/výstup (title/
+//    originalTitle/alternateTitle, { files, queriedPhrases, isLooselyMatched,
+//    noResults }), postavený nad searchTitlesOnWebshare vyššie.
+// ---------------------------------------------------------------------------
 
 export async function searchMovieOnWebshare({
   title,
@@ -433,22 +565,20 @@ export async function searchMovieOnWebshare({
   year,
   category = "video",
   sort = "largest",
-  limit = 20,
+  limit = 10,
   offset = 0,
   wst,
 } = {}) {
-  const nameSources = requireNameSources({ title, originalTitle, alternateTitle });
+  const titles = requireTitles([title, originalTitle, alternateTitle]);
 
-  const { rawFiles, queriedTitle } = await fetchRawFilesWithFallback(nameSources, { category, sort, offset, wst });
-  const movies = parseWebshareResults(rawFiles, { mode: "movie", title, originalTitle, alternateTitle, year });
-  const files = movies.slice(0, Number(limit) || 20);
-
-  const hasConfirmedYear = Boolean(year) && files.some((f) => extractYearsFromName(f.name).includes(Number(year)));
+  const { rawFiles, queriedTitles } = await fetchAndMergeRawFiles(titles, { category, sort, offset, wst });
+  const movies = parseWebshareResults(rawFiles, { mode: "movie", titles, year });
+  const files = selectDiverseTop(movies, Number(limit) || 10);
 
   return {
     files,
-    queriedPhrases: [queriedTitle],
-    isLooselyMatched: !year || !hasConfirmedYear,
+    queriedPhrases: queriedTitles,
+    isLooselyMatched: !year || !files.some((f) => f.yearConfirmed),
     noResults: files.length === 0,
   };
 }
@@ -461,7 +591,7 @@ export async function searchEpisodeOnWebshare({
   episode,
   category = "video",
   sort = "largest",
-  limit = 20,
+  limit = 10,
   offset = 0,
   wst,
 } = {}) {
@@ -470,24 +600,22 @@ export async function searchEpisodeOnWebshare({
     err.status = 400;
     throw err;
   }
-  const nameSources = requireNameSources({ title, originalTitle, alternateTitle });
+  const titles = requireTitles([title, originalTitle, alternateTitle]);
 
-  const { rawFiles, queriedTitle } = await fetchRawFilesWithFallback(nameSources, { category, sort, offset, wst });
-  const [series] = parseWebshareResults(rawFiles, { mode: "series", title, originalTitle, alternateTitle });
+  const { rawFiles, queriedTitles } = await fetchAndMergeRawFiles(titles, { category, sort, offset, wst });
+  const [series] = parseWebshareResults(rawFiles, { mode: "series", titles });
 
   const seasonNum = Number(season);
   const episodeNum = Number(episode);
   const seasonEntry = series.seasons.find((s) => s.seasonNumber === seasonNum);
-  const files = (seasonEntry?.episodes || [])
-    .filter((ep) => ep.episodeNumber === episodeNum)
-    .slice(0, Number(limit) || 20);
+  const episodeCandidates = sortFiles((seasonEntry?.episodes || []).filter((ep) => ep.episodeNumber === episodeNum));
+  const files = selectDiverseTop(episodeCandidates, Number(limit) || 10);
 
   return {
     files,
-    queriedPhrases: [queriedTitle],
-    // Bez multi-frázového query aggregatora už nie je "voľnejšia" zhoda čo
-    // by vrátiť — buď sa v lokálne zoskupenom strome nájde presná
-    // sezóna+epizóda, alebo noResults.
+    queriedPhrases: queriedTitles,
+    // Bez sekvenčného fallbacku už nie je "voľnejšia" zhoda čo by vrátiť —
+    // buď sa v lokálne zoskupenom strome nájde presná sezóna+epizóda, alebo noResults.
     isLooselyMatched: false,
     noResults: files.length === 0,
   };
