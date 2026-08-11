@@ -112,3 +112,41 @@ select:focus-visible,
   border-color: transparent;
   box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 0 18px rgba(168,85,247,.6);
 }
+
+/* ---------------------------------------------------------------------
+   `.tv-mode` (viď useIsTvDevice) — backdrop-filter a viacvrstvové rozmazané
+   box-shadow sú na slabších TV GPU drahé na priebežné prekresľovanie
+   (najmä sticky header počas scrollu), čo sa prejavuje ako sekanie/freeze.
+   Tu ich nahrádzame lacnejšími ekvivalentmi, len keď beží appka na TV.
+--------------------------------------------------------------------- */
+.tv-mode header.sticky {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: #0f0f12;
+}
+
+.tv-mode .movie-card {
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.tv-mode .movie-card:focus-visible,
+.tv-mode .movie-card.tv-focus {
+  transform: translateY(-4px) scale(1.04);
+  box-shadow:
+    0 0 0 3px rgba(255,255,255,.9),
+    0 8px 16px rgba(0,0,0,.6);
+}
+
+.tv-mode .movie-card .play-overlay > div {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: rgba(20, 20, 26, .55);
+}
+
+.tv-mode a:focus-visible,
+.tv-mode button:focus-visible,
+.tv-mode input:focus-visible,
+.tv-mode select:focus-visible,
+.tv-mode .tv-focus {
+  box-shadow: 0 0 0 3px rgba(255,255,255,.9);
+}

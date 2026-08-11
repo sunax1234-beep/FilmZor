@@ -16,14 +16,20 @@ const DIRECTIONS = {
   ArrowRight: "right",
 };
 
-function isVisible(el) {
-  if (!(el.offsetWidth || el.offsetHeight || el.getClientRects().length)) return false;
-  const style = window.getComputedStyle(el);
-  return style.visibility !== "hidden" && style.display !== "none";
-}
-
+// `getBoundingClientRect` je aj tak nevyhnutný pre pozičnú navigáciu nižšie,
+// takže viditeľnosť odvodzujeme z jeho rozmerov namiesto ďalšieho volania
+// `getComputedStyle` (vynucuje vlastný style recalc) — na appke s desiatkami
+// až stovkami kariet (po "Načítať viac") to pri každom stlačení šípky
+// prakticky zdvojnásobovalo počet vynútených reflow na slabšom TV CPU/GPU.
 function getFocusableElements() {
-  return Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisible);
+  const rects = new Map();
+  const elements = Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR)).filter((el) => {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+    rects.set(el, rect);
+    return true;
+  });
+  return { elements, rects };
 }
 
 function getCenter(rect) {
@@ -32,14 +38,16 @@ function getCenter(rect) {
 
 // Nájde najbližší focusovateľný prvok v danom smere podľa jeho pozície na obrazovke
 // (nie podľa poradia v DOM) — presne ako navigácia šípkami na Smart TV diaľkovom ovládaní.
-function findNextElement(current, direction, candidates) {
-  const currentCenter = getCenter(current.getBoundingClientRect());
+// `rects` je mapa už zmeraných obdĺžnikov (viď getFocusableElements), nech sa
+// tá istá vrstva kariet nemeria opakovane.
+function findNextElement(current, direction, candidates, rects) {
+  const currentCenter = getCenter(rects.get(current) || current.getBoundingClientRect());
   let best = null;
   let bestScore = Infinity;
 
   for (const el of candidates) {
     if (el === current) continue;
-    const center = getCenter(el.getBoundingClientRect());
+    const center = getCenter(rects.get(el) || el.getBoundingClientRect());
     const dx = center.x - currentCenter.x;
     const dy = center.y - currentCenter.y;
 
@@ -115,7 +123,7 @@ export function useSpatialNavigation({ enabled = true } = {}) {
 
       const direction = DIRECTIONS[e.key];
       if (direction) {
-        const candidates = getFocusableElements();
+        const { elements: candidates, rects } = getFocusableElements();
         if (candidates.length === 0) return;
 
         const current = active && candidates.includes(active) ? active : null;
@@ -128,7 +136,7 @@ export function useSpatialNavigation({ enabled = true } = {}) {
           return;
         }
 
-        const next = findNextElement(current, direction, candidates);
+        const next = findNextElement(current, direction, candidates, rects);
         if (next) {
           e.preventDefault();
           next.focus({ preventScroll: true });

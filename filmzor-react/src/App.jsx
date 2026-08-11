@@ -10,6 +10,7 @@ import { normalizeItem, genreNames } from "./utils/normalize";
 import { useDebounce } from "./hooks/useDebounce";
 import { useTmdbGenres } from "./hooks/useTmdbGenres";
 import { useSpatialNavigation } from "./hooks/useSpatialNavigation";
+import { useIsTvDevice } from "./hooks/useIsTvDevice";
 import { WebshareAuthProvider } from "./context/WebshareAuthContext";
 import { getAllWatchProgress, getProgressRatio, isInProgress, subscribeToWatchProgress } from "./utils/watchProgress";
 
@@ -52,6 +53,7 @@ function App() {
   const searchInputRef = useRef(null);
 
   useSpatialNavigation();
+  useIsTvDevice();
 
   const { movieGenres, tvGenres, loading: loadingGenres } = useTmdbGenres(language);
   const activeGenres = mediaType === "tv" ? tvGenres : movieGenres;

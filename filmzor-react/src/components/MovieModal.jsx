@@ -66,6 +66,7 @@ export default function MovieModal({ item, language, onClose }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragPreviewSeconds, setDragPreviewSeconds] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [videoError, setVideoError] = useState(null);
 
   const videoRef = useRef(null);
   const playerContainerRef = useRef(null);
@@ -148,8 +149,29 @@ export default function MovieModal({ item, language, onClose }) {
     setIsPlaying(true);
     setIsDragging(false);
     setDragPreviewSeconds(null);
+    setVideoError(null);
     clearTimeout(seekTimeoutRef.current);
     clearTimeout(seekCommitTimerRef.current);
+  }
+
+  const MEDIA_ERROR_MESSAGES = {
+    1: "Prehrávanie bolo prerušené.",
+    2: "Sieťová chyba pri sťahovaní videa.",
+    3: "Zariadenie nedokázalo dekódovať tento súbor (nepodporovaný kodek).",
+    4: "Tento formát videa zariadenie nepodporuje.",
+  };
+
+  // Predtým sa chyba prehrávania len potichu prehltla (spinner zmizol a nič sa
+  // nestalo) — na TV to vyzeralo, akoby sa video vôbec nedalo zapnúť, bez
+  // jedinej stopy prečo. `console.error` je tu zámerne, nech je vidno detail
+  // aj cez chrome://inspect vzdialené ladenie.
+  function handleVideoError() {
+    setIsSeeking(false);
+    clearTimeout(seekTimeoutRef.current);
+    const mediaError = videoRef.current?.error;
+    const message = (mediaError && MEDIA_ERROR_MESSAGES[mediaError.code]) || "Video sa nepodarilo prehrať.";
+    console.error("[MovieModal] chyba prehrávania videa:", mediaError?.code, mediaError?.message);
+    setVideoError(message);
   }
 
   // Automatické vyhľadanie na Webshare — pri filme hneď, pri seriáli až po výbere epizódy.
@@ -298,6 +320,7 @@ export default function MovieModal({ item, language, onClose }) {
     baseOffsetRef.current = clampedStart;
     setPlaybackPosition(clampedStart);
     setIsSeeking(true);
+    setVideoError(null);
     clearTimeout(seekTimeoutRef.current);
     // Poistka pre prípad, že ffmpeg potichu zlyhá a "playing" event nikdy nepríde.
     seekTimeoutRef.current = setTimeout(() => setIsSeeking(false), 12000);
@@ -587,7 +610,7 @@ export default function MovieModal({ item, language, onClose }) {
                       src={playerUrl}
                       autoPlay
                       onPlaying={handleVideoPlaying}
-                      onError={handleVideoPlaying}
+                      onError={handleVideoError}
                       onPlay={() => setIsPlaying(true)}
                       onPause={() => setIsPlaying(false)}
                       onEnded={() => setIsPlaying(false)}
@@ -601,9 +624,22 @@ export default function MovieModal({ item, language, onClose }) {
                       Tvoj prehliadač nepodporuje prehrávanie tohto videa.
                     </video>
 
-                    {isSeeking && (
+                    {isSeeking && !videoError && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/40 pointer-events-none">
                         <div className="w-10 h-10 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      </div>
+                    )}
+
+                    {videoError && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-6 text-center">
+                        <p className="text-sm text-red-300">{videoError}</p>
+                        <button
+                          type="button"
+                          onClick={() => loadPlayerAt(playerFile, baseOffsetRef.current + (videoRef.current?.currentTime || 0))}
+                          className="text-xs font-bold text-white bg-red-500/30 hover:bg-red-500/40 px-4 py-1.5 rounded-full transition"
+                        >
+                          Skúsiť znova
+                        </button>
                       </div>
                     )}
 
