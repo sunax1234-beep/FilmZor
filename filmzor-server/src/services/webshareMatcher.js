@@ -112,11 +112,27 @@ export function matchesAllKeywords(normalizedFileName, keywords) {
   return keywords.length > 0 && keywords.every((kw) => normalizedFileName.includes(kw));
 }
 
+// Alias zredukovaný na jediné kľúčové slovo (bežné pri krátkych názvoch ako
+// "Odysea", "It", "Up") má oveľa vyššie riziko, že "sedí" aj na úplne iný
+// titul, ktorý to isté slovo náhodou obsahuje (napr. "Odysea" ->
+// "Baraka - Odysea Zeme", "Čínská odysea") — substring matching s jediným
+// slovom to nevie samo osebe odlíšiť.
+function isWeakAlias(keywords) {
+  return keywords.length <= 1;
+}
+
 // Skúsi zhodu voči KTORÉMUKOĽVEK zo zdrojov názvu (SK/CZ lokalizovaný,
 // originálny, český alternatívny) — stačí, že súbor sedí na jeden z nich.
-function matchesAnyTitleSource(file, keywordSets) {
+// Pre "slabý" (1-slovný) alias navyše vyžaduje potvrdený rok (ak ho poznáme)
+// — nestačí, že súbor rok neuvádza, musí ho priamo potvrdzovať. Bez tejto
+// prídavnej podmienky by jediné generické slovo prepustilo takmer čokoľvek.
+function matchesAnyTitleSource(file, keywordSets, yearInfo, yearKnown) {
   const cleanName = stripNoiseWords(normalizeSearchText(file.name));
-  return keywordSets.some((keywords) => matchesAllKeywords(cleanName, keywords));
+  return keywordSets.some((keywords) => {
+    if (!matchesAllKeywords(cleanName, keywords)) return false;
+    if (isWeakAlias(keywords) && yearKnown) return yearInfo.confirmed;
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +266,10 @@ function normalizeFile(f) {
 // ---------------------------------------------------------------------------
 
 const VIDEO_EXTENSIONS = new Set(["mkv", "avi", "mp4", "mov", "wmv", "m4v", "ts", "webm", "flv", "mpg", "mpeg"]);
-const BLOCKED_WORDS_RE = /\b(trailer|sample|soundtrack|ost)\b/i;
+// "Making of"/bonus obsah zdieľa titul aj rok s hlavným filmom (rovnaký
+// alias, rovnaký potvrdený rok), takže ho vyššie uvedená kontrola roku
+// neodfiltruje — treba ho vylúčiť explicitne podľa mena.
+const BLOCKED_WORDS_RE = /\b(trailer|sample|soundtrack|ost|featurette)\b|making\W{0,3}of|behind\W{0,3}the\W{0,3}scenes/i;
 
 function isBlocked(file) {
   if (BLOCKED_WORDS_RE.test(file.name)) return true;
@@ -445,12 +464,13 @@ export function parseWebshareResults(rawFiles, { mode = "movie", titles = [], ye
   const keywordSets = nameSources.map(extractKeywords);
   const primaryTitle = nameSources[0] || "";
 
+  const yearKnown = Boolean(year);
   const matched = toArray(rawFiles)
     .map(normalizeFile)
     .filter((file) => !isBlocked(file))
-    .filter((file) => matchesAnyTitleSource(file, keywordSets))
     .map((file) => ({ file, yearInfo: evaluateYear(file, year) }))
     .filter(({ yearInfo }) => yearInfo.passes)
+    .filter(({ file, yearInfo }) => matchesAnyTitleSource(file, keywordSets, yearInfo, yearKnown))
     .map(({ file, yearInfo }) => ({ ...file, yearConfirmed: yearInfo.confirmed, _czSkDub: hasCzSkDub(file) }));
 
   const files = sortFiles(dedupeByNameAndSize(matched));
