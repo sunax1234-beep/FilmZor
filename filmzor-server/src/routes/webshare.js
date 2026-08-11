@@ -139,7 +139,7 @@ router.post(
       query,
       category = "video",
       sort = "largest",
-      limit = 20,
+      limit,
       offset = 0,
     } = req.body || {};
 
