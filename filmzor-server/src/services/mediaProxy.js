@@ -112,6 +112,14 @@ export async function streamMovie({ ident, wst, startSeconds, res }) {
 
   const args = [
     "-loglevel", "error",
+    // Bez tohto ffmpeg pri výpadku/zaseknutí zdrojového Webshare spojenia
+    // (napr. po ~30 min, pravdepodobne nejaký limit na strane Webshare CDN)
+    // len ticho čaká na ďalšie bajty donekonečna — proces nikdy neskončí,
+    // odpoveď sa nikdy neuzavrie a video vyzerá "zaseknuté" bez akejkoľvek
+    // chyby. -rw_timeout (mikrosekundy) prinúti ffmpeg po výpadku vstupu
+    // zlyhať rýchlo, čo cez ffmpeg.on("close") korektne ukončí response —
+    // frontend to potom (viď useTitlePlayer.js) potichu automaticky obnoví.
+    "-rw_timeout", "15000000",
     ...(seekSeconds > 0 ? ["-ss", seekSeconds.toFixed(2)] : []),
     "-i", info.url,
     "-map", "0:v:0",

@@ -10,6 +10,19 @@ const FALLBACK_LANGUAGE = { "sk-SK": "cs-CZ", "cs-CZ": "en-US" };
 // na backende) — presne na koniec by ffmpeg skončil bez jediného snímku.
 const SEEK_END_MARGIN_SECONDS = 3;
 
+// Ak stream skončí (alebo spadne so sieťovou chybou) viac než toľko sekúnd
+// pred známym koncom súboru, takmer isto nejde o skutočný koniec filmu, ale
+// o výpadok spojenia na zdrojový Webshare odkaz (napr. po dlhšom prehrávaní
+// — pozorované po ~30 min). V tom prípade sa potichu skúsi znova pripojiť
+// presne odtiaľ, kde prehrávanie skončilo, namiesto toho, aby to vyzeralo
+// ako "zaseknuté video" vyžadujúce ručné obnovenie.
+const PREMATURE_END_MARGIN_SECONDS = 15;
+const MAX_AUTO_RECONNECT_ATTEMPTS = 3;
+// Po toľkých ms nepretržitého prehrávania od posledného pokusu sa počítadlo
+// pokusov vynuluje — inak by jeden skorší výpadok navždy vyčerpal limit aj
+// pre neskoršie, úplne nesúvisiace výpadky v tom istom prehrávaní.
+const RECONNECT_RESET_AFTER_HEALTHY_MS = 20000;
+
 const MEDIA_ERROR_MESSAGES = {
   1: "Prehrávanie bolo prerušené.",
   2: "Sieťová chyba pri sťahovaní videa.",
@@ -65,6 +78,8 @@ export function useTitlePlayer(item, language, videoRef) {
   const seekTimeoutRef = useRef(null);
   const seekCommitTimerRef = useRef(null);
   const pendingResumeRef = useRef(0);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectResetTimerRef = useRef(null);
 
   const isTv = item?.mediaType === "tv";
 
@@ -140,8 +155,10 @@ export function useTitlePlayer(item, language, videoRef) {
     setIsDragging(false);
     setDragPreviewSeconds(null);
     setVideoError(null);
+    reconnectAttemptsRef.current = 0;
     clearTimeout(seekTimeoutRef.current);
     clearTimeout(seekCommitTimerRef.current);
+    clearTimeout(reconnectResetTimerRef.current);
   }
 
   // Automatické vyhľadanie na Webshare — pri filme hneď, pri seriáli až po výbere epizódy.
@@ -340,6 +357,48 @@ export function useTitlePlayer(item, language, videoRef) {
   function handleVideoPlaying() {
     setIsSeeking(false);
     clearTimeout(seekTimeoutRef.current);
+    // Prehrávanie beží zdravo — po chvíli vynuluj počítadlo auto-reconnect
+    // pokusov, nech prípadný ĎALŠÍ, nesúvisiaci výpadok neskôr počas toho
+    // istého filmu nemá vyčerpaný limit ešte skôr, než sa vôbec stane.
+    clearTimeout(reconnectResetTimerRef.current);
+    reconnectResetTimerRef.current = setTimeout(() => {
+      reconnectAttemptsRef.current = 0;
+    }, RECONNECT_RESET_AFTER_HEALTHY_MS);
+  }
+
+  // Potichu skúsi znova pripojiť stream presne od aktuálnej pozície (rovnaký
+  // mechanizmus ako pretočenie — nové <video src> s `?t=`, viď mediaProxy.js).
+  // Vráti false, ak reconnect nie je možný/zmysluplný (žiadny súbor, alebo
+  // už vyčerpaný limit pokusov) — volajúci potom namiesto toho zobrazí chybu.
+  function attemptReconnect() {
+    if (!playerFile) return false;
+    if (reconnectAttemptsRef.current >= MAX_AUTO_RECONNECT_ATTEMPTS) return false;
+    reconnectAttemptsRef.current += 1;
+    const resumeAt = baseOffsetRef.current + (videoRef.current?.currentTime || 0);
+    console.warn(
+      `[useTitlePlayer] automatické opätovné pripojenie streamu (pokus ${reconnectAttemptsRef.current}/${MAX_AUTO_RECONNECT_ATTEMPTS}) od ${resumeAt.toFixed(1)}s`
+    );
+    loadPlayerAt(playerFile, resumeAt);
+    return true;
+  }
+
+  // <video> nahlási "ended", keď stream (živý remux z ffmpeg) skončí — to
+  // môže znamenať aj skutočný koniec filmu, aj to, že spojenie na zdrojový
+  // Webshare odkaz vypadlo a ffmpeg proces preto skončil (viď -rw_timeout v
+  // mediaProxy.js). Rozlíši sa to porovnaním pozície so známym trvaním.
+  function handleVideoEnded() {
+    const currentPos = baseOffsetRef.current + (videoRef.current?.currentTime || 0);
+    const endedPrematurely = duration > 0 && currentPos < duration - PREMATURE_END_MARGIN_SECONDS;
+    if (endedPrematurely) {
+      if (attemptReconnect()) return;
+      // Pokusy o tiché obnovenie vyčerpané — namiesto videa, ktoré len
+      // nevysvetlene zamrzne na poslednom snímku, zobraz rovnakú chybu s
+      // tlačidlom "Skúsiť znova" ako pri sieťovej chybe vyššie.
+      console.error("[useTitlePlayer] stream sa predčasne skončil a auto-reconnect vyčerpal pokusy");
+      setVideoError("Spojenie so zdrojom videa vypadlo.");
+      return;
+    }
+    setIsPlaying(false);
   }
 
   // `baseOffsetRef` (aktuálny `?t=` s ktorým bol <video src> načítaný) je
@@ -357,6 +416,10 @@ export function useTitlePlayer(item, language, videoRef) {
     setIsSeeking(false);
     clearTimeout(seekTimeoutRef.current);
     const mediaError = videoRef.current?.error;
+    // Sieťová chyba (kód 2) uprostred prehrávania je typicky rovnaký výpadok
+    // spojenia ako predčasné "ended" nižšie — skús potichu reconnect skôr,
+    // než užívateľovi zobrazíš chybovú hlášku a tlačidlo "Skúsiť znova".
+    if (mediaError?.code === 2 && attemptReconnect()) return;
     const message = (mediaError && MEDIA_ERROR_MESSAGES[mediaError.code]) || "Video sa nepodarilo prehrať.";
     console.error("[useTitlePlayer] chyba prehrávania videa:", mediaError?.code, mediaError?.message);
     setVideoError(message);
@@ -364,6 +427,10 @@ export function useTitlePlayer(item, language, videoRef) {
 
   function retryPlayback() {
     if (!playerFile) return;
+    // Ručný klik na "Skúsiť znova" je explicitný nový pokus používateľa —
+    // vynuluj auto-reconnect počítadlo, nech má znova plný počet tichých
+    // pokusov namiesto toho, aby okamžite narazilo na už vyčerpaný limit.
+    reconnectAttemptsRef.current = 0;
     loadPlayerAt(playerFile, baseOffsetRef.current + (videoRef.current?.currentTime || 0));
   }
 
@@ -441,6 +508,7 @@ export function useTitlePlayer(item, language, videoRef) {
     retryPlayback,
     handleVideoPlaying,
     handleVideoError,
+    handleVideoEnded,
     handleTimeUpdate,
     togglePlayPause,
     toggleMute,

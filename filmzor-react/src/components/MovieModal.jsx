@@ -58,6 +58,7 @@ export default function MovieModal({ item, language, onClose }) {
     retryPlayback,
     handleVideoPlaying,
     handleVideoError,
+    handleVideoEnded,
     handleTimeUpdate,
     togglePlayPause,
     toggleMute,
@@ -273,7 +274,7 @@ export default function MovieModal({ item, language, onClose }) {
                       onError={handleVideoError}
                       onPlay={() => setIsPlaying(true)}
                       onPause={() => setIsPlaying(false)}
-                      onEnded={() => setIsPlaying(false)}
+                      onEnded={handleVideoEnded}
                       onTimeUpdate={handleTimeUpdate}
                       onVolumeChange={() => setIsMuted(videoRef.current?.muted ?? false)}
                       onClick={togglePlayPause}

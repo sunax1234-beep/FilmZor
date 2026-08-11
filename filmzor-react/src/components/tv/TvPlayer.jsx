@@ -41,6 +41,7 @@ export default function TvPlayer({ player, videoRef, title, onExit }) {
     retryPlayback,
     handleVideoPlaying,
     handleVideoError,
+    handleVideoEnded,
     handleTimeUpdate,
     togglePlayPause,
     toggleMute,
@@ -104,7 +105,7 @@ export default function TvPlayer({ player, videoRef, title, onExit }) {
         onError={handleVideoError}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={handleVideoEnded}
         onTimeUpdate={handleTimeUpdate}
         onVolumeChange={() => setIsMuted(videoRef.current?.muted ?? false)}
         onClick={togglePlayPause}
