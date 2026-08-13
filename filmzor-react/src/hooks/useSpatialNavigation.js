@@ -16,14 +16,27 @@ const DIRECTIONS = {
   ArrowRight: "right",
 };
 
+// Fullscreen vrstvy (MovieModal, TvDetailView, TvPlayer) majú `data-tv-overlay`
+// na koreňovom prvku a zostávajú v DOM aj s tým, čo je pod nimi (mriežka
+// filmov, bočný panel...), preto sa nedajú odlíšiť len podľa veľkosti/viditeľnosti.
+// Bez tohto scopingu vedela šípka poslať fokus na prvok skrytý pod prekrytím —
+// navigácia potom pôsobila, akoby náhodne "skákala" na neviditeľné miesta.
+// Ak je otvorených viac vrstiev naraz (napr. TvPlayer nad TvDetailView), posledná
+// v DOM poradí je tá navrchu, tá teda scopuje kandidátov.
+function getOverlayRoot() {
+  const overlays = document.querySelectorAll("[data-tv-overlay]");
+  return overlays.length > 0 ? overlays[overlays.length - 1] : null;
+}
+
 // `getBoundingClientRect` je aj tak nevyhnutný pre pozičnú navigáciu nižšie,
 // takže viditeľnosť odvodzujeme z jeho rozmerov namiesto ďalšieho volania
 // `getComputedStyle` (vynucuje vlastný style recalc) — na appke s desiatkami
 // až stovkami kariet (po "Načítať viac") to pri každom stlačení šípky
 // prakticky zdvojnásobovalo počet vynútených reflow na slabšom TV CPU/GPU.
 function getFocusableElements() {
+  const scope = getOverlayRoot() || document;
   const rects = new Map();
-  const elements = Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR)).filter((el) => {
+  const elements = Array.from(scope.querySelectorAll(FOCUSABLE_SELECTOR)).filter((el) => {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return false;
     rects.set(el, rect);

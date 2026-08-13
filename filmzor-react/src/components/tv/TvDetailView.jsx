@@ -67,7 +67,7 @@ export default function TvDetailView({ item, language, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[150] bg-[#0f0f12] overflow-y-auto">
+    <div data-tv-overlay className="fixed inset-0 z-[150] bg-[#0f0f12] overflow-y-auto">
       <div className="relative">
         {backdrop && (
           <div className="absolute inset-0 h-[52vh] overflow-hidden">

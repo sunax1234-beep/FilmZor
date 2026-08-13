@@ -76,22 +76,27 @@ export default function TvPlayer({ player, videoRef, title, onExit }) {
 
   // Diaľkové ovládanie: MediaPlayPause/MediaRewind/MediaFastForward posiela
   // časť Android TV diaľkových ovládačov ako vyhradené klávesy prehliadača.
+  // ArrowLeft/ArrowRight musia pretáčať vždy, nezávisle od toho, ktoré
+  // tlačidlo je práve fokusnuté — inak (napr. keď je fokus na Play/Pause,
+  // kam ho posúva efekt vyššie) by šípku namiesto pretočenia zachytil
+  // globálny useSpatialNavigation a len presunul fokus na susedné tlačidlo.
+  // Capture fáza na koreňovom prvku prehrávača beží skôr než jeho bublinová
+  // fáza na window, takže stopPropagation to k nej vôbec nepustí.
   function handleKeyDown(e) {
     revealControls();
     if (e.key === "MediaPlayPause") togglePlayPause();
     else if (e.key === "MediaRewind") commitSeek(displayPosition - 10);
     else if (e.key === "MediaFastForward") commitSeek(displayPosition + 10);
-  }
-
-  function handleSliderKeyDown(e) {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    e.stopPropagation();
-    commitSeek(displayPosition + (e.key === "ArrowRight" ? 10 : -10));
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      e.stopPropagation();
+      commitSeek(displayPosition + (e.key === "ArrowRight" ? 10 : -10));
+    }
   }
 
   return (
     <div
+      data-tv-overlay
       className="fixed inset-0 z-[200] bg-black"
       onKeyDownCapture={handleKeyDown}
       onPointerMove={revealControls}
@@ -164,7 +169,6 @@ export default function TvPlayer({ player, videoRef, title, onExit }) {
           aria-valuemin={0}
           aria-valuemax={duration || 0}
           aria-valuenow={Math.round(displayPosition)}
-          onKeyDown={handleSliderKeyDown}
           className="relative h-4 flex items-center focus:outline-none"
         >
           <div className="w-full h-2 rounded-full bg-white/20">
