@@ -1,5 +1,4 @@
 import PillGroup from "./PillGroup";
-import { ChevronDown } from "./Icons";
 
 const SORT_LABELS = ["Najnovšie", "Najlepšie hodnotené", "Najobľúbenejšie", "Abecedne A-Z"];
 
@@ -55,21 +54,7 @@ export default function FilterPanel({
           onChange={(v) => onYearChange(v === "Všetky" ? "all" : v)}
         />
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-gray-500 tracking-widest">ZORADIŤ PODĽA</span>
-          <div className="relative">
-            <select
-              value={sortLabel}
-              onChange={(e) => onSortChange(e.target.value)}
-              className="appearance-none bg-white/5 border border-white/10 text-gray-200 text-xs font-semibold rounded-full pl-4 pr-9 py-2 outline-none focus:border-fuchsia-500/60 cursor-pointer"
-            >
-              {SORT_LABELS.map((label) => (
-                <option key={label}>{label}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400" />
-          </div>
-        </div>
+        <PillGroup label="ZORADIŤ PODĽA" options={SORT_LABELS} active={sortLabel} onChange={onSortChange} />
       </div>
     </section>
   );

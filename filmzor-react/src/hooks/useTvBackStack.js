@@ -19,9 +19,25 @@ export function useTvBackStack(isOpen, onClose) {
       onClose();
     }
 
+    // Klávesnica/diaľkové ovládanie na TV platformách bez hardvérového "späť"
+    // (napr. prehliadačová appka na Tizen/webOS) posiela namiesto neho
+    // Escape alebo Backspace — bez tohto sa z detailu/prehrávača nedalo
+    // vrátiť inak než klikom na tlačidlo Späť na obrazovke. Volá priamo
+    // `onClose` (rovnako ako tlačidlo Späť), nie `history.back()` — zvyšný
+    // pushnutý history záznam potom zmaže cleanup nižšie (`if (!popped)`).
+    function handleKeyDown(e) {
+      if (e.key !== "Escape" && e.key !== "Backspace") return;
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
+      e.preventDefault();
+      onClose();
+    }
+
     window.addEventListener("popstate", handlePopState);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("keydown", handleKeyDown);
       // Zatvorenie inak než diaľkovým "späť" (napr. klik na tlačidlo Zavrieť)
       // musí zahodiť aj nami pridaný history záznam, inak by ďalšie stlačenie
       // šípky späť len znova "zatvorilo" už zatvorenú obrazovku.
