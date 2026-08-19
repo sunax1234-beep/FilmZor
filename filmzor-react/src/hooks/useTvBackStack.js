@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 // Android WebView back button maps to `webView.goBack()` (viď MainActivity.kt) —
 // keďže táto SPA predtým nikdy nepridávala history záznamy, canGoBack() bol
@@ -8,6 +8,15 @@ import { useEffect } from "react";
 // čo sú zobrazené — pridá jeden history záznam a diaľkové/hardvérové "späť"
 // namiesto opustenia appky zavrie len túto obrazovku.
 export function useTvBackStack(isOpen, onClose) {
+  // "Latest ref" namiesto priameho zachytenia `onClose` do closure — efekt
+  // nižšie beží len raz za "otvorenie" ([isOpen] deps), takže bez tohto by
+  // popstate/keydown handlery navždy volali PRVÚ verziu `onClose` z momentu,
+  // keď sa obrazovka otvorila. Dnes to náhodou nevadí (všetky volania
+  // posielajú stabilný setState wrapper), ale je to krehké — ref zaručuje
+  // vždy aktuálnu verziu bez ohľadu na to, čo `onClose` volajúci odovzdá.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -16,7 +25,7 @@ export function useTvBackStack(isOpen, onClose) {
 
     function handlePopState() {
       popped = true;
-      onClose();
+      onCloseRef.current();
     }
 
     // Klávesnica/diaľkové ovládanie na TV platformách bez hardvérového "späť"
@@ -30,7 +39,7 @@ export function useTvBackStack(isOpen, onClose) {
       const activeTag = document.activeElement?.tagName;
       if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") return;
       e.preventDefault();
-      onClose();
+      onCloseRef.current();
     }
 
     window.addEventListener("popstate", handlePopState);
