@@ -213,7 +213,7 @@ export default function TvDetailView({ item, language, onClose }) {
             {pendingFile && !loggedIn && (
               <div className="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl px-5 py-4">
                 <p className="text-sm text-amber-300 flex-1">
-                  Na prehratie sa treba prihlásiť k Webshare účtu — prihlás sa cez ikonu účtu v bočnom paneli a skúsi
+                  Na prehratie sa treba prihlásiť k Webshare účtu — prihlás sa cez ikonu účtu v hornej lište a skúsi
                   sa to automaticky spustiť.
                 </p>
                 <button
