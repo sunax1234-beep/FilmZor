@@ -80,6 +80,11 @@ export function useTitlePlayer(item, language, videoRef) {
   const pendingResumeRef = useRef(0);
   const reconnectAttemptsRef = useRef(0);
   const reconnectResetTimerRef = useRef(null);
+  // playFile je volaná imperatívne z viacerých miest (klik na súbor, resume
+  // uloženého progresu, auto-doskúsenie po prihlásení) bez zrušenia
+  // predošlého volania — bez tohto by rýchly druhý klik na iný súbor/epizódu
+  // mohol byť prepísaný neskôr doručenou odpoveďou na ten PRVÝ (pomalší) klik.
+  const playRequestRef = useRef(0);
 
   const isTv = item?.mediaType === "tv";
 
@@ -315,6 +320,9 @@ export function useTitlePlayer(item, language, videoRef) {
   }
 
   async function playFile(file, resumeTime = 0) {
+    // Vlastný token pre toto volanie — ak medzitým príde novšie playFile
+    // (iný súbor/epizóda), táto (staršia) odpoveď sa už na stav neaplikuje.
+    const requestId = ++playRequestRef.current;
     setLinkError(null);
     setLinkLoadingIdent(file.ident);
     try {
@@ -323,22 +331,27 @@ export function useTitlePlayer(item, language, videoRef) {
       // samotné prehrávanie ide cez náš remux proxy, aby fungovalo aj pre
       // .mkv/AC3 súbory, ktoré prehliadač priamo nevie.
       const meta = await getWebshareStreamMeta(file.ident);
+      if (playRequestRef.current !== requestId) return;
       setDuration(meta.duration || 0);
       loadPlayerAt(file, resumeTime);
       setPendingFile(null);
     } catch (e) {
+      if (playRequestRef.current !== requestId) return;
       if (e.status === 401) {
         // Lokálny "loggedIn" stav môže byť zastaraný (napr. session medzičasom
         // vypršala) — bez tohto refreshu by sa prihlasovací formulár nižšie
         // nemusel zobraziť, lebo podmienka je `pendingFile && !loggedIn`.
         await refreshAuth();
+        if (playRequestRef.current !== requestId) return;
         setPendingFile(file);
         pendingResumeRef.current = resumeTime || 0;
       } else {
         setLinkError(e.message);
       }
     } finally {
-      setLinkLoadingIdent(null);
+      // Ak medzitým odštartovalo novšie volanie, "vypnutie" loading indikátora
+      // tu by omylom zhaslo indikátor TOHO novšieho (ešte bežiaceho) requestu.
+      if (playRequestRef.current === requestId) setLinkLoadingIdent(null);
     }
   }
 
