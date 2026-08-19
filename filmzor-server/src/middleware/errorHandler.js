@@ -12,5 +12,13 @@ export function errorHandler(err, req, res, next) {
     });
   }
 
+  // Iné časti kódu (napr. mediaProxy.js) vyhadzujú obyčajný Error s
+  // priradeným .status namiesto WebshareApiError — predtým sa tu status aj
+  // hláška ignorovali a vždy to spadlo na generickú 500 bez ohľadu na to,
+  // aký status/hlášku volajúci kód zámerne nastavil.
+  if (typeof err.status === "number") {
+    return res.status(err.status).json({ success: false, error: err.message });
+  }
+
   res.status(500).json({ success: false, error: "Interná chyba servera." });
 }
