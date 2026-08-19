@@ -12,63 +12,69 @@ const LANGUAGES = [
   { code: "cs-CZ", label: "CZ" },
 ];
 
-// TV náhrada Header + BottomNav — trvalý bočný panel (namiesto hornej lišty,
-// ktorá je na diaľkové "preklikávanie" nepohodlná) s veľkými ikonami/textom,
-// zvyšok obrazovky necháva na `children` (TvHome, neskôr TvDetailView/TvPlayer).
+// TV náhrada Header + BottomNav — trvalá horná lišta zarovnaná s PC
+// rozložením (namiesto pôvodného bočného panelu), s väčšími cieľmi na
+// diaľkové ovládanie vďaka globálnemu 10-foot UI škálovaniu
+// (`html.tv-mode { font-size: 130% }` v index.css). `.tv-mode header.sticky`
+// v index.css jej aj tak vypína backdrop-blur kvôli výkonu na slabšom GPU.
 export default function TvShell({ activeNav, onNavChange, onSearchClick, language, onLanguageChange, children }) {
   return (
-    <div className="tv-shell flex min-h-screen">
-      <aside className="w-56 shrink-0 flex flex-col gap-8 px-5 py-8 border-r border-white/5 bg-[#0f0f12]">
-        <div className="flex items-center gap-2 px-1">
-          <LogoMark />
-          <span className="text-xl font-extrabold tracking-tight gradient-text">FilmZor</span>
-        </div>
-
-        <nav className="flex flex-col gap-2" aria-label="Hlavná navigácia">
-          {NAV_ITEMS.map(({ label, nav, icon: Icon }) => {
-            const active = activeNav === nav;
-            return (
-              <button
-                key={nav}
-                onClick={() => onNavChange(nav)}
-                aria-current={active ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-base font-semibold transition-colors ${
-                  active ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Icon className={`w-6 h-6 shrink-0 ${active ? "text-fuchsia-400" : ""}`} />
-                {label}
-              </button>
-            );
-          })}
-          <button
-            onClick={onSearchClick}
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-base font-semibold text-gray-400 hover:text-white transition-colors"
-          >
-            <SearchIcon className="w-6 h-6 shrink-0" />
-            Hľadať
-          </button>
-        </nav>
-
-        <div className="mt-auto flex flex-col gap-4">
-          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1 self-start">
-            {LANGUAGES.map(({ code, label }) => (
-              <button
-                key={code}
-                onClick={() => onLanguageChange(code)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${
-                  language === code
-                    ? "bg-gradient-to-r from-violet-500 to-pink-500 text-white"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+    <div className="tv-shell min-h-screen flex flex-col">
+      <header className="sticky top-0 z-50 bg-[#0f0f12] border-b border-white/5">
+        <div className="max-w-[1920px] mx-auto px-10 h-20 flex items-center justify-between gap-6">
+          <div className="flex items-center gap-2 shrink-0">
+            <LogoMark />
+            <span className="text-2xl font-extrabold tracking-tight gradient-text">FilmZor</span>
           </div>
-          <HeaderAuthMenu />
+
+          <nav className="flex items-center gap-3 mx-auto" aria-label="Hlavná navigácia">
+            {NAV_ITEMS.map(({ label, nav, icon: Icon }) => {
+              const active = activeNav === nav;
+              return (
+                <button
+                  key={nav}
+                  onClick={() => onNavChange(nav)}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-base font-semibold transition-colors ${
+                    active ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <Icon className={`w-6 h-6 shrink-0 ${active ? "text-fuchsia-400" : ""}`} />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="flex items-center gap-4 shrink-0">
+            <button
+              onClick={onSearchClick}
+              className="flex items-center gap-2 rounded-full px-4 py-2.5 text-base font-semibold text-gray-400 hover:text-white transition-colors"
+            >
+              <SearchIcon className="w-5 h-5 shrink-0" />
+              Hľadať
+            </button>
+
+            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1">
+              {LANGUAGES.map(({ code, label }) => (
+                <button
+                  key={code}
+                  onClick={() => onLanguageChange(code)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${
+                    language === code
+                      ? "bg-gradient-to-r from-violet-500 to-pink-500 text-white"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <HeaderAuthMenu />
+          </div>
         </div>
-      </aside>
+      </header>
 
       <div className="flex-1 min-w-0">{children}</div>
     </div>
