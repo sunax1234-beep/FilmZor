@@ -1,7 +1,8 @@
+import { memo } from "react";
 import MovieCard from "./MovieCard";
 import MovieGridSkeleton from "./skeletons/MovieGridSkeleton";
 
-export default function MovieGrid({ title, items, genreLookup, loading, error, onSelect, onLoadMore, hasMore, onRetry }) {
+function MovieGrid({ title, items, genreLookup, loading, error, onSelect, onLoadMore, hasMore, onRetry }) {
   const initialLoading = loading && items.length === 0;
 
   return (
@@ -61,3 +62,5 @@ export default function MovieGrid({ title, items, genreLookup, loading, error, o
     </section>
   );
 }
+
+export default memo(MovieGrid);

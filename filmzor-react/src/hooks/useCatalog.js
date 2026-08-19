@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { discover, searchMulti } from "../services/tmdb";
-import { normalizeItem, genreNames } from "../utils/normalize";
+import { normalizeItem } from "../utils/normalize";
 import { useDebounce } from "./useDebounce";
 import { useTmdbGenres } from "./useTmdbGenres";
 import { getAllWatchProgress, getProgressRatio, isInProgress, subscribeToWatchProgress } from "../utils/watchProgress";
@@ -65,8 +65,14 @@ export function useCatalog() {
     setGenreIds((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
   }, []);
 
+  // Chráni pred zastaranými odpoveďami — bez tohto by rýchle prepnutie
+  // filtra/žánru počas prebiehajúceho fetchu mohlo neskôr doručenou
+  // (staršou) odpoveďou prepísať už zobrazené výsledky pre NOVÝ filter.
+  const loadRequestRef = useRef(0);
+
   const loadResults = useCallback(
     async (pageToLoad, replace) => {
+      const requestId = ++loadRequestRef.current;
       setLoading(true);
       setError(null);
       try {
@@ -77,6 +83,7 @@ export function useCatalog() {
           const sortBy = SORT_MAP[mediaType][sortLabel];
           data = await discover(mediaType, { genreIds, year, sortBy, language, page: pageToLoad });
         }
+        if (loadRequestRef.current !== requestId) return;
 
         const items = (data.results || [])
           .filter((r) => (isSearching ? r.media_type === "movie" || r.media_type === "tv" : true))
@@ -86,10 +93,11 @@ export function useCatalog() {
         setTotalPages(data.total_pages || 1);
         setPage(pageToLoad);
       } catch (e) {
+        if (loadRequestRef.current !== requestId) return;
         setError(e.message);
         if (replace) setResults([]);
       } finally {
-        setLoading(false);
+        if (loadRequestRef.current === requestId) setLoading(false);
       }
     },
     [isSearching, debouncedQuery, mediaType, genreIds, year, sortLabel, language]
@@ -128,41 +136,77 @@ export function useCatalog() {
     return subscribeToWatchProgress(refreshContinueWatching);
   }, []);
 
+  // Mapy sa stavajú raz na zmenu zoznamu žánrov, nie pri každom volaní
+  // genreLookup — predtým sa nová Map staval nanovo pre KAŽDÚ kartu filmu
+  // pri KAŽDOM renderi mriežky (rádovo stovky zbytočných alokácií po
+  // niekoľkých "Načítať viac").
+  const movieGenreMap = useMemo(() => new Map(movieGenres.map((g) => [g.id, g.name])), [movieGenres]);
+  const tvGenreMap = useMemo(() => new Map(tvGenres.map((g) => [g.id, g.name])), [tvGenres]);
+
   const genreLookup = useCallback(
     (item) => {
-      const names = genreNames(item.genreIds, item.mediaType === "tv" ? tvGenres : movieGenres);
-      return names.slice(0, 1).join(", ") || (item.mediaType === "tv" ? "Seriál" : "Film");
+      const map = item.mediaType === "tv" ? tvGenreMap : movieGenreMap;
+      const name = (item.genreIds || []).map((id) => map.get(id)).find(Boolean);
+      return name || (item.mediaType === "tv" ? "Seriál" : "Film");
     },
-    [movieGenres, tvGenres]
+    [movieGenreMap, tvGenreMap]
   );
 
-  return {
-    activeNav,
-    setActiveNav,
-    mediaType,
-    language,
-    setLanguage,
-    searchQuery,
-    setSearchQuery,
-    isSearching,
-    genreIds,
-    toggleGenre,
-    year,
-    setYear,
-    sortLabel,
-    setSortLabel,
-    results,
-    page,
-    totalPages,
-    loading,
-    error,
-    loadResults,
-    continueItems,
-    selected,
-    setSelected,
-    searchInputRef,
-    activeGenres,
-    loadingGenres,
-    genreLookup,
-  };
+  // Bez tohto by tento hook vrátil NOVÝ objekt pri každom renderi App —
+  // napr. aj pri zmene `searchQuery` na každý úder klávesy (debounce odloží
+  // len fetch, nie tento re-render) — čo by prekreslilo celý strom vrátane
+  // každej karty filmu v mriežke, hoci sa výsledky ešte vôbec nezmenili.
+  return useMemo(
+    () => ({
+      activeNav,
+      setActiveNav,
+      mediaType,
+      language,
+      setLanguage,
+      searchQuery,
+      setSearchQuery,
+      isSearching,
+      genreIds,
+      toggleGenre,
+      year,
+      setYear,
+      sortLabel,
+      setSortLabel,
+      results,
+      page,
+      totalPages,
+      loading,
+      error,
+      loadResults,
+      continueItems,
+      selected,
+      setSelected,
+      searchInputRef,
+      activeGenres,
+      loadingGenres,
+      genreLookup,
+    }),
+    [
+      activeNav,
+      mediaType,
+      language,
+      searchQuery,
+      isSearching,
+      genreIds,
+      toggleGenre,
+      year,
+      sortLabel,
+      results,
+      page,
+      totalPages,
+      loading,
+      error,
+      loadResults,
+      continueItems,
+      selected,
+      activeGenres,
+      loadingGenres,
+      genreLookup,
+    ]
+  );
 }

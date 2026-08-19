@@ -1,7 +1,12 @@
+import { memo } from "react";
 import { PlayIcon } from "./Icons";
 import { posterUrl } from "../services/tmdb";
 
-export default function MovieCard({ item, genreLabel, onClick, sizeClassName = "w-full" }) {
+// memo: mriežka vie mať po niekoľkých "Načítať viac" stovky kariet — bez
+// tohto by prekreslenie rodiča z akéhokoľvek dôvodu (napr. úder klávesy vo
+// vyhľadávaní) prekreslilo úplne KAŽDÚ kartu, aj keď jej vlastné props
+// (item/genreLabel/onClick) sa vôbec nezmenili.
+function MovieCard({ item, genreLabel, onClick, sizeClassName = "w-full" }) {
   const poster = posterUrl(item.posterPath, "w500");
 
   function handleKeyDown(e) {
@@ -58,3 +63,5 @@ export default function MovieCard({ item, genreLabel, onClick, sizeClassName = "
     </div>
   );
 }
+
+export default memo(MovieCard);

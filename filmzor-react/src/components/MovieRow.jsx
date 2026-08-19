@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { memo, useRef } from "react";
 import MovieCard from "./MovieCard";
 import { ChevronLeft, ChevronRight } from "./Icons";
 
-export default function MovieRow({
+function MovieRow({
   title,
   movies,
   genreLookup,
@@ -58,3 +58,5 @@ export default function MovieRow({
     </section>
   );
 }
+
+export default memo(MovieRow);
