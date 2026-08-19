@@ -356,16 +356,20 @@ export function useTitlePlayer(item, language, videoRef) {
   }
 
   // Prihlásenie je len jedno globálne (vpravo hore v Header) — žiadny vlastný
-  // login formulár tu v modáli. Keď sa `loggedIn` zmení na true (užívateľ sa
-  // medzitým prihlásil hore), automaticky doskúsime prehratie súboru, na
-  // ktorý predtým kliklo (bez toho by musel znova klikať na "Prehrať").
+  // login formulár tu v modáli. Keď je používateľ prihlásený a čaká na neho
+  // rozpozeraný/kliknutý súbor, automaticky ho doskúsime prehrať. Závislosť
+  // na `pendingFile` (nielen na `loggedIn`) je nutná — playFile môže dostať
+  // 401 aj v momente, keď `loggedIn` je už `true` (napr. session medzičasom
+  // zneplatnená inde), a vtedy refreshAuth() nemusí `loggedIn` reálne zmeniť
+  // (ostane `true`), takže by efekt naviazaný len na `loggedIn` už nikdy
+  // znova nespustil a súbor by zostal navždy "čakať" bez vysvetlenia.
   useEffect(() => {
     if (loggedIn && pendingFile) {
       const file = pendingFile;
       playFile(file, pendingResumeRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedIn]);
+  }, [loggedIn, pendingFile]);
 
   function handleVideoPlaying() {
     setIsSeeking(false);
