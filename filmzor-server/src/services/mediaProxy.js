@@ -16,6 +16,14 @@ const ffprobePath = "ffprobe";
 const CACHE_TTL_MS = 4 * 60 * 1000;
 const sourceCache = new Map();
 
+// Kľúč MUSÍ obsahovať wst, nielen ident — inak by cache vrátila odkaz
+// vygenerovaný z Webshare účtu prvého používateľa aj druhému používateľovi,
+// ktorý si v rámci CACHE_TTL_MS pozrie ten istý film z INÉHO účtu (cudzia
+// kvóta/limit by sa tak nevedomky spotrebovala z účtu toho prvého).
+function getCacheKey(ident, wst) {
+  return `${ident}:${wst}`;
+}
+
 function fetchContentLength(url) {
   return new Promise((resolve) => {
     const client = url.startsWith("https") ? https : http;
@@ -61,7 +69,8 @@ function probeDuration(url) {
 }
 
 export async function getSourceInfo(ident, wst) {
-  const cached = sourceCache.get(ident);
+  const cacheKey = getCacheKey(ident, wst);
+  const cached = sourceCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached;
 
   const linkResponse = await callWebshare("/file_link/", {
@@ -82,7 +91,7 @@ export async function getSourceInfo(ident, wst) {
   ]);
 
   const info = { url: linkResponse.link, size, duration, expiresAt: Date.now() + CACHE_TTL_MS };
-  sourceCache.set(ident, info);
+  sourceCache.set(cacheKey, info);
   return info;
 }
 
@@ -181,7 +190,8 @@ export async function streamMovie({ ident, wst, startSeconds, res }) {
       // nevyprší CACHE_TTL_MS. Len pri studenom štarte (seekSeconds===0) —
       // pri seeku blízko konca súboru je krátky/prázdny výstup legitímny
       // a nesúvisí s dostupnosťou CDN.
-      if (sourceCache.get(ident) === info) sourceCache.delete(ident);
+      const cacheKey = getCacheKey(ident, wst);
+      if (sourceCache.get(cacheKey) === info) sourceCache.delete(cacheKey);
       console.error(
         `[mediaProxy] ffmpeg skončil po ${elapsedMs}ms (kód ${code}, signal ${signal}) bez odoslania čo i len jedného bajtu, zdroj=${info.url}, stderr:`,
         stderrTail || "(prázdne)"
