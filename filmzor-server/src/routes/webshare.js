@@ -3,6 +3,7 @@ import { callWebshare, WebshareApiError } from "../services/webshareClient.js";
 import { webshareLoginDigest } from "../utils/md5crypt.js";
 import { searchMovieOnWebshare, searchEpisodeOnWebshare } from "../services/webshareMatcher.js";
 import { streamMovie, getSourceInfo } from "../services/mediaProxy.js";
+import { loginRateLimit } from "../middleware/loginRateLimit.js";
 
 const router = Router();
 
@@ -33,6 +34,7 @@ router.get("/session", (req, res) => {
  */
 router.post(
   "/login",
+  loginRateLimit,
   asyncHandler(async (req, res) => {
     const { username, password, keepLoggedIn } = req.body || {};
 
