@@ -3,6 +3,7 @@
 // ručne raz, výstupné PNG súbory sa commitujú, appka samotná sharp nepotrebuje.
 import sharp from "sharp";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const BG = "#0f0f12";
 const svg = readFileSync(new URL("../public/favicon.svg", import.meta.url));
@@ -21,7 +22,11 @@ async function renderIcon(size, logoScale, outPath) {
   console.log("wrote", outPath);
 }
 
-await renderIcon(192, 0.62, new URL("../public/icon-192.png", import.meta.url).pathname.slice(1));
-await renderIcon(512, 0.62, new URL("../public/icon-512.png", import.meta.url).pathname.slice(1));
+// fileURLToPath (nie .pathname.slice(1)) — .slice(1) len náhodou funguje na
+// Windows (kde pathname pre file:// URL začína "/C:/...", vedúce "/" treba
+// odseknúť), na POSIX by ale odsekol SKUTOČNÉ vedúce "/" a spravil z
+// absolútnej cesty relatívnu (voči CWD, nie voči tomuto skriptu).
+await renderIcon(192, 0.62, fileURLToPath(new URL("../public/icon-192.png", import.meta.url)));
+await renderIcon(512, 0.62, fileURLToPath(new URL("../public/icon-512.png", import.meta.url)));
 // Maskable: OS orezáva do kruhu/rounded-square, logo musí byť v "safe zone" (menšie + viac paddingu).
-await renderIcon(512, 0.42, new URL("../public/maskable-icon-512.png", import.meta.url).pathname.slice(1));
+await renderIcon(512, 0.42, fileURLToPath(new URL("../public/maskable-icon-512.png", import.meta.url)));
