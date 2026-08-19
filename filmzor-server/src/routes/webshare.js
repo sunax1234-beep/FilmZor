@@ -92,7 +92,10 @@ router.post(
     res.json({
       success: true,
       username,
-      isVip: loginResponse.vip === "1",
+      // fast-xml-parser parsuje <vip>1</vip> na JS ČÍSLO 1, nie reťazec "1"
+      // (viď webshareClient.js parseTagValue:true) — porovnanie s "1" by
+      // bolo vždy false aj pre reálne VIP účty.
+      isVip: String(loginResponse.vip) === "1",
       vipUntil: loginResponse.vip_until || null,
     });
   })
