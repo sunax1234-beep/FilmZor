@@ -60,6 +60,7 @@ export default function TvShell({ activeNav, onNavChange, onSearchClick, languag
                 <button
                   key={code}
                   onClick={() => onLanguageChange(code)}
+                  aria-pressed={language === code}
                   className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${
                     language === code
                       ? "bg-gradient-to-r from-violet-500 to-pink-500 text-white"

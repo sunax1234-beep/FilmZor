@@ -46,6 +46,7 @@ export default function Header({
               <button
                 key={code}
                 onClick={() => onLanguageChange(code)}
+                aria-pressed={language === code}
                 className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition ${
                   language === code
                     ? "bg-gradient-to-r from-violet-500 to-pink-500 text-white"
