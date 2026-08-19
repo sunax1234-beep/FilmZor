@@ -1,6 +1,4 @@
 import { spawn } from "node:child_process";
-import http from "node:http";
-import https from "node:https";
 import { callWebshare } from "./webshareClient.js";
 
 // Systémové ffmpeg/ffprobe (nainštalované cez apt v Dockerfile), NIE balíky
@@ -24,21 +22,18 @@ function getCacheKey(ident, wst) {
   return `${ident}:${wst}`;
 }
 
-function fetchContentLength(url) {
-  return new Promise((resolve) => {
-    const client = url.startsWith("https") ? https : http;
-    const req = client.request(url, { method: "HEAD" }, (res) => {
-      resolve(Number(res.headers["content-length"]) || 0);
-      res.resume();
-    });
-    req.on("error", () => resolve(0));
-    req.setTimeout(8000, () => {
-      req.destroy();
-      resolve(0);
-    });
-    req.end();
-  });
-}
+// Záznam sa inak uvoľní len "lenivo" (keď na ten istý ident+wst príde ďalší
+// request) — ident, ktorý sa prehral raz a nikdy znova, by inak v pamäti
+// zostal navždy. Na dlhobežnom stroji (Fly.io min_machines_running=1) by to
+// časom neohraničene rástlo. .unref() nech tento interval nedrží proces
+// bežať sám o sebe.
+const CACHE_SWEEP_INTERVAL_MS = 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of sourceCache) {
+    if (value.expiresAt <= now) sourceCache.delete(key);
+  }
+}, CACHE_SWEEP_INTERVAL_MS).unref();
 
 function probeDuration(url) {
   return new Promise((resolve) => {
@@ -85,12 +80,9 @@ export async function getSourceInfo(ident, wst) {
     throw err;
   }
 
-  const [size, duration] = await Promise.all([
-    fetchContentLength(linkResponse.link),
-    probeDuration(linkResponse.link),
-  ]);
+  const duration = await probeDuration(linkResponse.link);
 
-  const info = { url: linkResponse.link, size, duration, expiresAt: Date.now() + CACHE_TTL_MS };
+  const info = { url: linkResponse.link, duration, expiresAt: Date.now() + CACHE_TTL_MS };
   sourceCache.set(cacheKey, info);
   return info;
 }
@@ -145,10 +137,10 @@ export async function streamMovie({ ident, wst, startSeconds, res }) {
   const spawnedAt = Date.now();
   const ffmpeg = spawn(ffmpegPath, args);
 
-  // Content-Length sa TU nedá nastaviť — `info.size` je veľkosť PÔVODNÉHO
-  // súboru na Webshare, ale posiela sa prekódovaný výstup (iný zvukový
-  // kodek, iný kontajner) s úplne inou veľkosťou. Nesprávny Content-Length
-  // spôsobí, že klient/proxy čaká na bajty, ktoré nikdy nedorazia (alebo
+  // Content-Length sa tu vopred nedá nastaviť — pôvodný súbor na Webshare
+  // sa prekóduje na úplne iný výstup (iný zvukový kodek, iný kontajner) s
+  // inou veľkosťou, ktorú vopred nepoznáme. Nesprávny Content-Length by
+  // spôsobil, že klient/proxy čaká na bajty, ktoré nikdy nedorazia (alebo
   // spojenie spadne, keď sa deklarovaný počet prekročí) — appka sa navonok
   // tvári, že "chvíľu načítava a potom nič". Namiesto 206 s (nutne
   // nepresným) Content-Range vraciame vždy 200 s chunked prenosom; seek
