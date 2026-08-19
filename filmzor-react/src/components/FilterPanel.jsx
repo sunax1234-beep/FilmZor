@@ -7,15 +7,14 @@ const YEARS = Array.from({ length: 7 }, (_, i) => String(currentYear + 1 - i));
 
 export default function FilterPanel({
   genres,
-  genreId,
-  onGenreChange,
+  genreIds,
+  onGenreToggle,
   year,
   onYearChange,
   sortLabel,
   onSortChange,
   loadingGenres,
 }) {
-  const genreOptions = [{ id: "all", name: "Všetko" }, ...genres];
   const yearOptions = ["Všetky", ...YEARS];
 
   return (
@@ -31,13 +30,24 @@ export default function FilterPanel({
                 style={{ width: `${60 + ((i * 17) % 50)}px` }}
               />
             ))}
+          {!loadingGenres && (
+            <button
+              onClick={() => onGenreToggle("all")}
+              className={`pill px-4 py-1.5 rounded-full text-xs font-semibold border border-white/10 bg-white/5 text-gray-300 hover:border-fuchsia-400/50 ${
+                genreIds.length === 0 ? "active" : ""
+              }`}
+            >
+              Všetko
+            </button>
+          )}
           {!loadingGenres &&
-            genreOptions.map((g) => (
+            genres.map((g) => (
               <button
                 key={g.id}
-                onClick={() => onGenreChange(g.id)}
+                onClick={() => onGenreToggle(g.id)}
+                aria-pressed={genreIds.includes(g.id)}
                 className={`pill px-4 py-1.5 rounded-full text-xs font-semibold border border-white/10 bg-white/5 text-gray-300 hover:border-fuchsia-400/50 ${
-                  genreId === g.id ? "active" : ""
+                  genreIds.includes(g.id) ? "active" : ""
                 }`}
               >
                 {g.name}

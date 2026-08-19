@@ -38,14 +38,16 @@ export function getGenres(mediaType, language = "sk-SK") {
   return tmdbFetch(`/genre/${mediaType}/list`, { language }).then((d) => d.genres || []);
 }
 
-export function discover(mediaType, { genreId, year, sortBy, language = "sk-SK", page = 1 } = {}) {
+export function discover(mediaType, { genreIds, year, sortBy, language = "sk-SK", page = 1 } = {}) {
   const params = {
     language,
     page,
     sort_by: sortBy || "popularity.desc",
     include_adult: false,
   };
-  if (genreId && genreId !== "all") params.with_genres = genreId;
+  // Čiarka v `with_genres` je pre TMDB AND (film musí mať všetky žánre naraz),
+  // "|" by bolo OR — AND je zámerné, nech "Romantický" + "Komédia" vráti rom-comy.
+  if (genreIds && genreIds.length > 0) params.with_genres = genreIds.join(",");
   if (year && year !== "all") {
     params[mediaType === "movie" ? "primary_release_year" : "first_air_date_year"] = year;
   }

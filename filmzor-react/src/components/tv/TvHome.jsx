@@ -16,8 +16,8 @@ export default function TvHome({ catalog }) {
     searchQuery,
     setSearchQuery,
     isSearching,
-    genreId,
-    setGenreId,
+    genreIds,
+    toggleGenre,
     year,
     setYear,
     sortLabel,
@@ -72,8 +72,8 @@ export default function TvHome({ catalog }) {
       {!isSearching && (
         <FilterPanel
           genres={activeGenres}
-          genreId={genreId}
-          onGenreChange={setGenreId}
+          genreIds={genreIds}
+          onGenreToggle={toggleGenre}
           year={year}
           onYearChange={setYear}
           sortLabel={sortLabel}

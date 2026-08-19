@@ -18,8 +18,8 @@ export default function StandardApp({ catalog }) {
     searchQuery,
     setSearchQuery,
     isSearching,
-    genreId,
-    setGenreId,
+    genreIds,
+    toggleGenre,
     year,
     setYear,
     sortLabel,
@@ -61,8 +61,8 @@ export default function StandardApp({ catalog }) {
       {!isSearching && (
         <FilterPanel
           genres={activeGenres}
-          genreId={genreId}
-          onGenreChange={setGenreId}
+          genreIds={genreIds}
+          onGenreToggle={toggleGenre}
           year={year}
           onYearChange={setYear}
           sortLabel={sortLabel}

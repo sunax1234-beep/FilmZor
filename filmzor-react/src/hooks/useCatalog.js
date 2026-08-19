@@ -32,7 +32,7 @@ export function useCatalog() {
   const debouncedQuery = useDebounce(searchQuery, 450);
   const isSearching = debouncedQuery.trim().length > 0;
 
-  const [genreId, setGenreId] = useState("all");
+  const [genreIds, setGenreIds] = useState([]);
   const [year, setYear] = useState("all");
   const [sortLabel, setSortLabel] = useState("Najobľúbenejšie");
 
@@ -51,8 +51,19 @@ export function useCatalog() {
 
   // ID žánrov filmov a seriálov sa v TMDB líšia, preto pri prepnutí resetujeme výber.
   useEffect(() => {
-    setGenreId("all");
+    setGenreIds([]);
   }, [mediaType]);
+
+  // "Všetko" vyprázdni výber, inak sa žáner pridá/odoberie zo zoznamu —
+  // viacero vybraných žánrov naraz sa v discover() spojí cez AND (viď tmdb.js),
+  // napr. Romantický + Komédia vráti len rom-comy, nie hocijaký z oboch žánrov.
+  const toggleGenre = useCallback((id) => {
+    if (id === "all") {
+      setGenreIds([]);
+      return;
+    }
+    setGenreIds((prev) => (prev.includes(id) ? prev.filter((g) => g !== id) : [...prev, id]));
+  }, []);
 
   const loadResults = useCallback(
     async (pageToLoad, replace) => {
@@ -64,7 +75,7 @@ export function useCatalog() {
           data = await searchMulti(debouncedQuery.trim(), { language, page: pageToLoad });
         } else {
           const sortBy = SORT_MAP[mediaType][sortLabel];
-          data = await discover(mediaType, { genreId, year, sortBy, language, page: pageToLoad });
+          data = await discover(mediaType, { genreIds, year, sortBy, language, page: pageToLoad });
         }
 
         const items = (data.results || [])
@@ -81,13 +92,13 @@ export function useCatalog() {
         setLoading(false);
       }
     },
-    [isSearching, debouncedQuery, mediaType, genreId, year, sortLabel, language]
+    [isSearching, debouncedQuery, mediaType, genreIds, year, sortLabel, language]
   );
 
   useEffect(() => {
     loadResults(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSearching, debouncedQuery, mediaType, genreId, year, sortLabel, language]);
+  }, [isSearching, debouncedQuery, mediaType, genreIds, year, sortLabel, language]);
 
   // "Pokračovať v pozeraní" — reálny progres uložený v localStorage (viď useTitlePlayer),
   // nie staršie z filmov/seriálov rozpozeraných menej ako COMPLETE_THRESHOLD (90 %).
@@ -134,8 +145,8 @@ export function useCatalog() {
     searchQuery,
     setSearchQuery,
     isSearching,
-    genreId,
-    setGenreId,
+    genreIds,
+    toggleGenre,
     year,
     setYear,
     sortLabel,
