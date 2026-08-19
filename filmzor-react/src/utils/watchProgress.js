@@ -76,6 +76,18 @@ export function removeWatchProgress(mediaType, id, season, episode) {
 }
 
 export function subscribeToWatchProgress(callback) {
+  // UPDATED_EVENT je custom event na `window` — funguje len v tej istej
+  // karte, ktorá zápis urobila. Natívny "storage" event oproti tomu fireuje
+  // len v OSTATNÝCH kartách rovnakého originu — spolu pokrývajú oba smery,
+  // takže "Pokračovať v pozeraní" sa aktualizuje naživo aj naprieč kartami
+  // (napr. appka otvorená na TV aj na telefóne súčasne).
+  function onStorage(e) {
+    if (e.key === null || e.key === STORAGE_KEY) callback();
+  }
   window.addEventListener(UPDATED_EVENT, callback);
-  return () => window.removeEventListener(UPDATED_EVENT, callback);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(UPDATED_EVENT, callback);
+    window.removeEventListener("storage", onStorage);
+  };
 }
