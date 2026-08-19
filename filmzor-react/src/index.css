@@ -74,6 +74,13 @@ body {
 
 .row-arrow { opacity: 0; transition: opacity .2s ease, background .2s ease; }
 .row-wrap:hover .row-arrow { opacity: 1; }
+/* Bez tohto by D-pad/klávesnica vedeli presunúť fokus na tieto šípky bez
+   toho, aby sa vôbec zobrazili (na TV niet myši, takže :hover vyššie nikdy
+   nenastane) — fokus by tak skončil na neviditeľnom tlačidle. */
+.row-wrap:focus-within .row-arrow,
+.row-arrow:focus-visible {
+  opacity: 1;
+}
 
 /* ---------------------------------------------------------------------
    Smart TV / klávesnicová navigácia (šípky + Enter) — fialovo-biely glow.
