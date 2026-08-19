@@ -261,9 +261,17 @@ export function useTitlePlayer(item, language, videoRef) {
   useEffect(() => {
     if (!playerUrl || !playerFile || !item || !duration) return;
 
+    // Zachytené TU (pri spustení efektu pre TENTO playerUrl), nie čítané
+    // priamo z baseOffsetRef.current vnútri persist() — loadPlayerAt totiž
+    // baseOffsetRef prepíše SYNCHRÓNNE hneď pri ĎALŠOM seeku, ešte predtým,
+    // než stihne doletieť cleanup tohto efektu (ten beží pri KAŽDEJ zmene
+    // playerUrl). Čítanie cez ref by tak v cleanupe spočítalo starú
+    // video.currentTime s UŽ NOVÝM cieľovým offsetom namiesto so starým.
+    const baseOffsetAtLoad = baseOffsetRef.current;
+
     function persist() {
       const video = videoRef.current;
-      const currentTime = baseOffsetRef.current + (video?.currentTime || 0);
+      const currentTime = baseOffsetAtLoad + (video?.currentTime || 0);
       saveWatchProgress({
         id: item.id,
         mediaType: item.mediaType,
