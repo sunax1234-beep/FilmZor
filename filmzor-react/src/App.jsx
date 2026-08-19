@@ -11,7 +11,10 @@ function App() {
   const catalog = useCatalog();
   const isTv = useIsTvDevice();
 
-  useSpatialNavigation();
+  // Šípkami-ovládaná navigácia je určená pre diaľkové ovládanie na TV —
+  // mimo TV by inak šípka namiesto natívneho scrollu/pohybu kurzora
+  // nečakane preskočila fokus na najbližšiu kartu/tlačidlo.
+  useSpatialNavigation({ enabled: isTv });
 
   return (
     <WebshareAuthProvider>
