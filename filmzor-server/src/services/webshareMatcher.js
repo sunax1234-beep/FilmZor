@@ -312,13 +312,23 @@ function extractYearsFromName(name) {
 // napr. pri hľadaní "Spider-Man" (2002) natiahli aj jeho pokračovania z
 // iných rokov. Súbor BEZ akéhokoľvek roku v názve sa nezahadzuje (nevieme
 // posúdiť), len dostane `confirmed: false` a teda nižšiu prioritu v sortFiles.
-function evaluateYear(file, year) {
+//
+// `seriesMode`: pri seriáloch je `year` first_air_date CELÉHO seriálu, no
+// súbor konkrétnej neskoršej sezóny bežne v názve nesie SVOJ VLASTNÝ
+// (neskorší) rok — vyžadovanie zhody +/-1 s prvým uvedením by tak
+// systematicky vyraďovalo platné súbory neskorších sezón. Namiesto toho sa
+// vyžaduje len, aby rok v názve nebol PRED prvým uvedením mínus tolerancia
+// — jednosmerná podmienka, ktorá nikdy nesprávne nevyradí neskoršiu sezónu,
+// ale stále odfiltruje zjavne iné/staršie dielo s tým istým slovom v názve.
+function evaluateYear(file, year, seriesMode = false) {
   if (!year) return { passes: true, confirmed: false };
   const yearsInName = extractYearsFromName(file.name);
   if (yearsInName.length === 0) return { passes: true, confirmed: false };
   const target = Number(year);
-  const withinTolerance = yearsInName.some((y) => Math.abs(y - target) <= 1);
-  return { passes: withinTolerance, confirmed: withinTolerance };
+  const matches = seriesMode
+    ? yearsInName.some((y) => y >= target - 1)
+    : yearsInName.some((y) => Math.abs(y - target) <= 1);
+  return { passes: matches, confirmed: matches };
 }
 
 // Odstráni súbory s rovnakým názvom AJ rovnakou veľkosťou (rôzne re-uploady/
@@ -490,10 +500,11 @@ export function parseWebshareResults(rawFiles, { mode = "movie", titles = [], ye
   const primaryTitle = nameSources[0] || "";
 
   const yearKnown = Boolean(year);
+  const seriesMode = mode === "series";
   const matched = toArray(rawFiles)
     .map(normalizeFile)
     .filter((file) => !isBlocked(file))
-    .map((file) => ({ file, yearInfo: evaluateYear(file, year) }))
+    .map((file) => ({ file, yearInfo: evaluateYear(file, year, seriesMode) }))
     .filter(({ yearInfo }) => yearInfo.passes)
     .filter(({ file, yearInfo }) => matchesAnyTitleSource(file, keywordSets, yearInfo, yearKnown))
     .map(({ file, yearInfo }) => ({ ...file, yearConfirmed: yearInfo.confirmed, _czSkDub: hasCzSkDub(file) }));
@@ -634,6 +645,7 @@ export async function searchEpisodeOnWebshare({
   alternateTitle,
   season,
   episode,
+  year,
   category = "video",
   sort = "largest",
   limit = 10,
@@ -648,7 +660,7 @@ export async function searchEpisodeOnWebshare({
   const titles = requireTitles([title, originalTitle, alternateTitle]);
 
   const { rawFiles, queriedTitles } = await fetchAndMergeRawFiles(titles, { category, sort, offset, wst });
-  const [series] = parseWebshareResults(rawFiles, { mode: "series", titles });
+  const [series] = parseWebshareResults(rawFiles, { mode: "series", titles, year });
 
   const seasonNum = Number(season);
   const episodeNum = Number(episode);

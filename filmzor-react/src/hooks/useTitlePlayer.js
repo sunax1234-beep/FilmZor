@@ -202,6 +202,12 @@ export function useTitlePlayer(item, language, videoRef) {
             alternateTitle,
             season: episodeSelection.season,
             episode: episodeSelection.episode.episode_number,
+            // Rok prvého vysielania (item.year je pre TV first_air_date, viď
+            // normalizeItem) — bez neho backend nemal pri seriáloch žiadny
+            // spôsob, ako overiť jednoslovné/generické názvy proti roku (na
+            // rozdiel od filmov), takže táto ochrana pre seriály nikdy
+            // nefungovala.
+            year: item.year,
           }
         : { title: item.title, originalTitle: item.originalTitle, alternateTitle, year: item.year };
 

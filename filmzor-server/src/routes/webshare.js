@@ -171,7 +171,7 @@ router.post(
     const isEpisodeSearch = season !== undefined && season !== null && episode !== undefined && episode !== null;
 
     const result = isEpisodeSearch
-      ? await searchEpisodeOnWebshare({ ...opts, season, episode })
+      ? await searchEpisodeOnWebshare({ ...opts, season, episode, year: year || null })
       : await searchMovieOnWebshare({ ...opts, year: year || null });
 
     res.json({
