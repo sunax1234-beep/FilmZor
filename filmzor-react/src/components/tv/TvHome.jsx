@@ -33,6 +33,8 @@ export default function TvHome({ catalog }) {
     searchInputRef,
     activeGenres,
     loadingGenres,
+    genresError,
+    retryGenres,
     genreLookup,
   } = catalog;
 
@@ -79,6 +81,8 @@ export default function TvHome({ catalog }) {
           sortLabel={sortLabel}
           onSortChange={setSortLabel}
           loadingGenres={loadingGenres}
+          genresError={genresError}
+          onRetryGenres={retryGenres}
         />
       )}
 

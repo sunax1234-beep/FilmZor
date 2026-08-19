@@ -36,6 +36,8 @@ export default function StandardApp({ catalog }) {
     searchInputRef,
     activeGenres,
     loadingGenres,
+    genresError,
+    retryGenres,
     genreLookup,
   } = catalog;
 
@@ -68,6 +70,8 @@ export default function StandardApp({ catalog }) {
           sortLabel={sortLabel}
           onSortChange={setSortLabel}
           loadingGenres={loadingGenres}
+          genresError={genresError}
+          onRetryGenres={retryGenres}
         />
       )}
 

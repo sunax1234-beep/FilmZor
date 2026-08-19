@@ -46,7 +46,13 @@ export function useCatalog() {
   const [selected, setSelected] = useState(null);
   const searchInputRef = useRef(null);
 
-  const { movieGenres, tvGenres, loading: loadingGenres } = useTmdbGenres(language);
+  const {
+    movieGenres,
+    tvGenres,
+    loading: loadingGenres,
+    error: genresError,
+    retry: retryGenres,
+  } = useTmdbGenres(language);
   const activeGenres = mediaType === "tv" ? tvGenres : movieGenres;
 
   // ID žánrov filmov a seriálov sa v TMDB líšia, preto pri prepnutí resetujeme výber.
@@ -184,6 +190,8 @@ export function useCatalog() {
       searchInputRef,
       activeGenres,
       loadingGenres,
+      genresError,
+      retryGenres,
       genreLookup,
     }),
     [
@@ -206,6 +214,8 @@ export function useCatalog() {
       selected,
       activeGenres,
       loadingGenres,
+      genresError,
+      retryGenres,
       genreLookup,
     ]
   );
