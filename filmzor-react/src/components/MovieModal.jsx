@@ -17,10 +17,16 @@ function formatTime(seconds) {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+const MODAL_TITLE_ID = "movie-modal-title";
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export default function MovieModal({ item, language, onClose }) {
   const videoRef = useRef(null);
   const playerContainerRef = useRef(null);
   const sliderRef = useRef(null);
+  const dialogRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
 
   const {
     details,
@@ -68,9 +74,44 @@ export default function MovieModal({ item, language, onClose }) {
     setIsMuted,
   } = useTitlePlayer(item, language, videoRef);
 
+  // Presun fokusu dnu pri otvorení + návrat naň pri zavretí (napr. na kartu
+  // filmu, ktorá modal otvorila) — bez toho by klávesnicový/screen-reader
+  // používateľ po zavretí modalu "stratil miesto" na stránke.
   useEffect(() => {
     if (!item) return;
-    const onKeyDown = (e) => e.key === "Escape" && onClose();
+    previouslyFocusedRef.current = document.activeElement;
+    dialogRef.current?.focus();
+    return () => {
+      if (previouslyFocusedRef.current instanceof HTMLElement) {
+        previouslyFocusedRef.current.focus();
+      }
+    };
+  }, [item]);
+
+  useEffect(() => {
+    if (!item) return;
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      // Focus trap — kým je modal otvorený, Tab/Shift+Tab nesmie uniknúť
+      // do obsahu stránky pod backdropom.
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = dialogRef.current.querySelectorAll(FOCUSABLE_SELECTOR);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [item, onClose]);
@@ -138,7 +179,12 @@ export default function MovieModal({ item, language, onClose }) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl bg-[#17171c] border border-white/10 shadow-2xl"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={MODAL_TITLE_ID}
+        tabIndex={-1}
+        className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-2xl bg-[#17171c] border border-white/10 shadow-2xl outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -169,7 +215,9 @@ export default function MovieModal({ item, language, onClose }) {
               </div>
             )}
 
-            <h3 className="text-2xl font-bold text-white leading-tight">{title}</h3>
+            <h3 id={MODAL_TITLE_ID} className="text-2xl font-bold text-white leading-tight">
+              {title}
+            </h3>
 
             {originalTitle && originalTitle !== title && (
               <p className="text-sm text-gray-500 italic">Originálny názov: {originalTitle}</p>
