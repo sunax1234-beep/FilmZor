@@ -1,6 +1,7 @@
 package cz.filmzor.tv
 
 import android.annotation.SuppressLint
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.view.View
 import android.webkit.WebChromeClient
@@ -75,7 +76,16 @@ class MainActivity : AppCompatActivity() {
         // Umožňuje pripojiť sa cez chrome://inspect (z počítača v tej istej sieti
         // cez `adb connect`) a vidieť reálne console/network chyby priamo z TV —
         // bez toho sa problémy s prehrávaním na TV dali ladiť len naslepo.
-        WebView.setWebContentsDebuggingEnabled(true)
+        // LEN v debug builde — v release by to inak nechalo WebView (vrátane
+        // session cookie/JS) inšpekovateľný komukoľvek s adb prístupom k
+        // zariadeniu. `BuildConfig.DEBUG` tu nie je dostupné bez zapnutia
+        // `buildFeatures.buildConfig` (AGP 8+ ho defaultne vypína), preto
+        // runtime FLAG_DEBUGGABLE — funguje bez zmeny Gradle konfigurácie a
+        // správne odráža, či bol tento konkrétny APK zostavený ako debug.
+        val isDebuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (isDebuggable) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
 
         webView.loadUrl(appUrl)
     }
