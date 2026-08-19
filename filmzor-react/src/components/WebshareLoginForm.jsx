@@ -40,6 +40,7 @@ export default function WebshareLoginForm({ onSuccess, onCancel }) {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Prihlasovacie meno alebo e-mail"
+          aria-label="Prihlasovacie meno alebo e-mail"
           autoComplete="username"
           required
           className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none placeholder:text-gray-500 focus:border-fuchsia-500/60"
@@ -49,6 +50,7 @@ export default function WebshareLoginForm({ onSuccess, onCancel }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="Heslo"
+          aria-label="Heslo"
           autoComplete="current-password"
           required
           className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none placeholder:text-gray-500 focus:border-fuchsia-500/60"
