@@ -98,10 +98,22 @@ export function extractKeywords(text) {
 // Odstráni release/kvalita/jazyk tokeny a osamotené 4-ciferné roky z už
 // normalizovaného textu — použité pri porovnávaní názvu súboru, nech
 // "1080p"/"cz"/"x264" a pod. neovplyvňujú zhodu.
-function stripNoiseWords(normalizedText) {
+//
+// `keywords` (hľadané slová AKTUÁLNEHO zdroja názvu) sa NIKDY neodfiltrujú,
+// aj keby vyzerali ako rok — bez tejto výnimky by film s číselným názvom
+// (napr. "1917", "2012", "1984") vrátil VŽDY nula výsledkov: token "1917"
+// je zároveň jediné kľúčové slovo aj to, čo rok-regex odstráni z každého
+// kandidátneho súboru, takže matchesAllKeywords by ho nikdy nenašla.
+function stripNoiseWords(normalizedText, keywords = []) {
+  const keywordSet = new Set(keywords);
   return normalizedText
     .split(" ")
-    .filter((tok) => tok && !NOISE_WORDS.has(tok) && !/^(19|20)\d{2}$/.test(tok))
+    .filter((tok) => {
+      if (!tok) return false;
+      if (keywordSet.has(tok)) return true;
+      if (NOISE_WORDS.has(tok)) return false;
+      return !/^(19|20)\d{2}$/.test(tok);
+    })
     .join(" ");
 }
 
@@ -127,8 +139,12 @@ function isWeakAlias(keywords) {
 // — nestačí, že súbor rok neuvádza, musí ho priamo potvrdzovať. Bez tejto
 // prídavnej podmienky by jediné generické slovo prepustilo takmer čokoľvek.
 function matchesAnyTitleSource(file, keywordSets, yearInfo, yearKnown) {
-  const cleanName = stripNoiseWords(normalizeSearchText(file.name));
+  const normalizedName = normalizeSearchText(file.name);
   return keywordSets.some((keywords) => {
+    // Šum sa odstraňuje per-keywordSet (nie raz vopred) — rôzne zdroje
+    // názvu (SK/CZ/originál/alternatívny) môžu mať iné kľúčové slová, ktoré
+    // treba pred odstránením roku/šumu chrániť inak pre každý z nich.
+    const cleanName = stripNoiseWords(normalizedName, keywords);
     if (!matchesAllKeywords(cleanName, keywords)) return false;
     if (isWeakAlias(keywords) && yearKnown) return yearInfo.confirmed;
     return true;
@@ -148,8 +164,13 @@ function matchesAnyTitleSource(file, keywordSets, yearInfo, yearKnown) {
 const EPISODE_CODE_PATTERNS = [
   /\bs\s*(\d{1,3})\s*e\s*(\d{1,3})\b/i, // S01E05, s1e5, S01 E05
   /\b(\d{1,2})\s*x\s*(\d{1,3})\b/i, // 1x05, 01x05
-  /\bseason\s*(\d{1,3})\D{0,15}?episode\s*(\d{1,3})\b/i, // Season 1 Episode 5
-  /\bseria\s*(\d{1,3})\D{0,15}?epizoda\s*(\d{1,3})\b/i, // Séria 1 Epizóda 5
+  // Medzera medzi "season <n>" a "episode <n>" pôvodne smela obsahovať len
+  // ne-číslice (\D) — bežný číselný tag kvality medzi nimi (napr.
+  // "Season 1 2160p Episode 5") tak vzor nikdy nenašiel. "." (ľubovoľný
+  // znak, lenivo) to rieši; kotva na "episode"/"epizoda" hneď za medzerou
+  // drží zhodu úzku aj tak.
+  /\bseason\s*(\d{1,3}).{0,15}?episode\s*(\d{1,3})\b/i, // Season 1 Episode 5
+  /\bseria\s*(\d{1,3}).{0,15}?epizoda\s*(\d{1,3})\b/i, // Séria 1 Epizóda 5
 ];
 
 // Rozumné hranice pre sanity-check — bez toho by napr. "1x05" vzor teoreticky
@@ -249,7 +270,11 @@ function normalizeFile(f) {
     sizeBytes,
     sizeFormatted: formatBytes(sizeBytes),
     img: f.img || null,
-    isPasswordProtected: f.password === "1",
+    // fast-xml-parser (parseTagValue:true, viď webshareClient.js) parsuje
+    // <password>1</password> na JS ČÍSLO 1, nie reťazec "1" — porovnanie
+    // s "1" by tak bolo vždy false a appka by heslom chránené súbory nikdy
+    // neoznačila ako chránené.
+    isPasswordProtected: String(f.password) === "1",
     positiveVotes: Number(f.positive_votes) || 0,
     negativeVotes: Number(f.negative_votes) || 0,
     languages: detectLanguages(f.name),
