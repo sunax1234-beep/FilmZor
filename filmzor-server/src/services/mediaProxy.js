@@ -113,6 +113,14 @@ export async function streamMovie({ ident, wst, startSeconds, res }) {
 
   const args = [
     "-loglevel", "error",
+    // AVI (na rozdiel od MKV/MP4) nemá spoľahlivé per-snímkové PTS — starší
+    // XviD/DivX rip často len deklaruje pevné fps v hlavičke bez presného
+    // časovania jednotlivých snímkov. Pri `-c:v copy` nižšie sa táto
+    // nepresnosť prenesie priamo do výstupu nezmenená a v priebehu dlhšieho
+    // prehrávania sa hromadí na počuteľný drift zvuku oproti obrazu.
+    // `+genpts` prinúti ffmpeg prepočítať PTS z kontajnera nanovo namiesto
+    // slepého preberania toho, čo AVI hlási.
+    "-fflags", "+genpts",
     // Bez tohto ffmpeg pri výpadku/zaseknutí zdrojového Webshare spojenia
     // (napr. po ~30 min, pravdepodobne nejaký limit na strane Webshare CDN)
     // len ticho čaká na ďalšie bajty donekonečna — proces nikdy neskončí,
@@ -128,6 +136,11 @@ export async function streamMovie({ ident, wst, startSeconds, res }) {
     "-c:v", "copy",
     "-c:a", "aac",
     "-b:a", "192k",
+    // Zvuk sa aj tak prekóduje (riadok vyššie), takže tento filter nič
+    // navyše nestojí: priebežne mierne naťahuje/skracuje zvukovú stopu, aby
+    // sledovala skutočné PTS videa, namiesto toho, aby sa drift z
+    // nepresného zdroja len ticho hromadil počas celého prehrávania.
+    "-af", "aresample=async=1000",
     "-f", "mp4",
     "-movflags", "frag_keyframe+empty_moov+default_base_moof",
     "-avoid_negative_ts", "make_zero",
