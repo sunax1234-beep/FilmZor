@@ -2,6 +2,7 @@ import StandardApp from "./components/StandardApp";
 import TvShell from "./components/tv/TvShell";
 import TvHome from "./components/tv/TvHome";
 import TvDetailView from "./components/tv/TvDetailView";
+import DebugOverlay from "./components/DebugOverlay";
 import { useCatalog } from "./hooks/useCatalog";
 import { useSpatialNavigation } from "./hooks/useSpatialNavigation";
 import { useIsTvDevice } from "./hooks/useIsTvDevice";
@@ -18,6 +19,7 @@ function App() {
 
   return (
     <WebshareAuthProvider>
+      <DebugOverlay />
       {isTv ? (
         <TvShell
           activeNav={catalog.activeNav}
