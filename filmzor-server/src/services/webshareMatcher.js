@@ -523,9 +523,14 @@ export function parseWebshareResults(rawFiles, { mode = "movie", titles = [], ye
 // 6. Webshare API — vyhľadávanie a verejné vstupné body pre routes/webshare.js
 // ---------------------------------------------------------------------------
 
-// Vyšší limit než pôvodných 50 — kompenzuje, že na dopyt ide len JEDNA holá
-// fráza namiesto viacerých cielenejších variantov (rok/SxxExx v dopyte).
-const WEBSHARE_FETCH_LIMIT = 100;
+// Webshare dopyt ide so `sort: "largest"` (viď fetchRawFilesForTitle nižšie)
+// — pri populárnych tituloch s množstvom veľkých re-uploadov/remuxov tak
+// prvých pár desiatok výsledkov vie byť takmer výhradne 15GB+ 4K súborov a
+// menšie (napr. bežné 1080p ~2-4GB) verzie sa do stiahnutého poolu vôbec
+// nedostanú — selectSizeDiverse nižšie ich potom nemá odkiaľ vybrať, aj keď
+// v skutočnosti na Webshare existujú. 100 -> 250 dáva menším veľkostným
+// pásmam reálnu šancu byť medzi stiahnutými kandidátmi.
+const WEBSHARE_FETCH_LIMIT = 250;
 
 // Koľko aliasov z `titles` sa naraz posiela na Webshare (Promise.all).
 // Viac než 3 väčšinou len naťahuje čas odpovede bez reálneho prínosu —
