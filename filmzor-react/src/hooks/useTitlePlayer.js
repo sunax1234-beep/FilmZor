@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getDetails } from "../services/tmdb";
 import { searchWebshare, getWebshareStreamMeta, getWebshareStreamUrl } from "../services/webshare";
 import { useWebshareAuth } from "../context/WebshareAuthContext";
-import { getWatchProgress, getEpisodeProgressForShow, isInProgress, saveWatchProgress } from "../utils/watchProgress";
+import { getEpisodeProgressForShow, isInProgress, saveWatchProgress } from "../utils/watchProgress";
 
 const FALLBACK_LANGUAGE = { "sk-SK": "cs-CZ", "cs-CZ": "en-US" };
 
@@ -244,21 +244,10 @@ export function useTitlePlayer(item, language, videoRef) {
     };
   }, [item, isTv, episodeSelection, runWebshareSearch]);
 
-  // Ak pre tento titul (resp. túto epizódu) existuje uložený rozpozeraný progres,
-  // otvor prehrávač rovno na uloženom súbore a čase namiesto zoznamu súborov.
-  useEffect(() => {
-    if (!item) return;
-    if (isTv && !episodeSelection) return;
-
-    const saved = isTv
-      ? getWatchProgress(item.mediaType, item.id, episodeSelection.season, episodeSelection.episode.episode_number)
-      : getWatchProgress(item.mediaType, item.id);
-
-    if (saved?.webshareIdent && isInProgress(saved)) {
-      playFile({ ident: saved.webshareIdent, name: saved.webshareName || item.title }, saved.currentTime);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item, isTv, episodeSelection]);
+  // Rozpozeraný titul/epizóda sa NEspúšťa automaticky — otvorenie (napr. z
+  // "Pokračovať v pozeraní") vždy ukáže zoznam zdrojov (wsFiles, viď
+  // runWebshareSearch vyššie) a používateľ si stream zvolí sám kliknutím,
+  // rovnako ako pri úplne novom vyhľadávaní.
 
   // Priebežné ukladanie rozpozerania (každých 5s + pri pauze/skončení/zatvorení) do localStorage.
   // Používa app-sledovanú `duration`/pozíciu, nie video.duration/currentTime —
