@@ -51,28 +51,55 @@ function gridGapForWidth(width) {
   return "1.75rem 2.25rem";
 }
 
+// 10-foot UI škála (predtým statické CSS `html.tv-mode { font-size: 130% }`).
+// Základ 16px zodpovedá bežnému predvolenému `rem`, z ktorého Tailwind
+// spacing/text- utility triedy vychádzajú.
+const TV_FONT_BASE_PX = 16;
+const TV_FONT_SCALE = 1.3;
+
 // Prepína triedu `tv-mode` na <html> (viď index.css) — CSS efekty príliš
 // náročné na slabšie TV GPU (backdrop-blur, veľké rozmazané box-shadow) sa
 // tak dajú zľahčiť bez toho, aby to ovplyvnilo mobil/desktop. Zároveň
-// nastavuje `--tv-grid-cols`, ktorý index.css používa v `repeat(var(...))`.
+// nastavuje `--tv-grid-cols`/`--tv-grid-gap` (viď index.css) a priamo
+// `font-size` na <html> — VŠETKO v appke je rem-based, takže root font-size
+// je jediné miesto, kde treba korigovať devicePixelRatio.
+//
+// Prečo nestačí opraviť len grid: font-size v CSS px sa na obrazovke
+// zobrazí ako `CSS px × dpr` FYZICKÝCH pixelov — na zariadení s dpr=2 by
+// teda rovnaký "130%" CSS font-size vyšiel fyzicky 2× väčší než na dpr=1
+// zariadení rovnakej fyzickej veľkosti. Keďže hlavička (TvShell), "Pokračovať
+// v pozeraní" (MovieRow) aj texty všade sú v `rem`, delenie dpr tu opraví
+// VŠETKO naraz rovnako, ako predtým opravil grid stĺpce fyzickú šírku.
 export function useIsTvDevice() {
   const [isTv, setIsTv] = useState(detectTv);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("tv-mode", isTv);
+    const root = document.documentElement;
+    root.classList.toggle("tv-mode", isTv);
+
+    function applySizing() {
+      if (!isTv) {
+        root.style.removeProperty("font-size");
+        root.style.removeProperty("--tv-grid-cols");
+        root.style.removeProperty("--tv-grid-gap");
+        return;
+      }
+      const dpr = window.devicePixelRatio || 1;
+      const width = physicalWidth();
+      root.style.fontSize = `${(TV_FONT_BASE_PX * TV_FONT_SCALE) / dpr}px`;
+      root.style.setProperty("--tv-grid-cols", String(gridColsForWidth(width)));
+      root.style.setProperty("--tv-grid-gap", gridGapForWidth(width));
+    }
+
+    applySizing();
+    window.addEventListener("resize", applySizing);
+    return () => window.removeEventListener("resize", applySizing);
   }, [isTv]);
 
   useEffect(() => {
-    function applyGridCols() {
-      const width = physicalWidth();
-      document.documentElement.style.setProperty("--tv-grid-cols", String(gridColsForWidth(width)));
-      document.documentElement.style.setProperty("--tv-grid-gap", gridGapForWidth(width));
-    }
     function recheck() {
       setIsTv(detectTv());
-      applyGridCols();
     }
-    applyGridCols();
     window.addEventListener("resize", recheck);
     return () => window.removeEventListener("resize", recheck);
   }, []);

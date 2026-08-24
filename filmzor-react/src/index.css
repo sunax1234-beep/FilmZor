@@ -172,8 +172,13 @@ select:focus-visible,
 /* 10-foot UI: Tailwindove "text-" a "spacing-" utility triedy sú v `rem`,
    takže zväčšenie base font-size tu automaticky pomerovo zväčší text aj
    odsadenie naprieč všetkými znovupoužitými komponentmi (MovieCard,
-   FilterPanel pills, nadpisy...) bez toho, aby ich bolo treba upravovať
-   jednotlivo. */
+   FilterPanel pills, nadpisy, TvShell hlavička, MovieRow karty...) bez
+   toho, aby ich bolo treba upravovať jednotlivo.
+   Toto 130% je len fallback pre okamih pred prvým behom JS (alebo bez JS)
+   — useIsTvDevice.js si font-size na <html> hneď potom prepisuje priamo
+   (inline style, vyššia špecifickosť), naviac delený devicePixelRatio, nech
+   zariadenia s dpr≠1 (napr. dpr=2 Android TV box hlásiaci polovičný
+   innerWidth) nevychádzajú fyzicky 2× väčšie než majú. */
 html.tv-mode {
   font-size: 130%;
 }
