@@ -21,9 +21,9 @@ export default function FilterPanel({
 
   return (
     <section className="max-w-[1440px] mx-auto px-6 lg:px-10 py-6 flex flex-col gap-4 border-b border-white/5">
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="pill-row flex flex-wrap items-center gap-2.5">
         <span className="text-xs font-bold text-gray-500 tracking-widest mr-1">ŽÁNER</span>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="pill-row flex flex-wrap items-center gap-2">
           {loadingGenres &&
             Array.from({ length: 8 }).map((_, i) => (
               <div
@@ -71,7 +71,7 @@ export default function FilterPanel({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="pill-row flex flex-wrap items-center justify-between gap-4">
         <PillGroup
           label="ROK"
           options={yearOptions}

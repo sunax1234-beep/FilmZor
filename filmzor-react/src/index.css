@@ -52,6 +52,26 @@ body {
   box-shadow: 0 0 18px rgba(168,85,247,.45);
 }
 
+/* ---------------------------------------------------------------------
+   `.pill-row` (FilterPanel/PillGroup žáner/rok/zoradenie riadky) — fallback
+   pre flexbox `gap`, ktoré staršie WebKit/Chromium jadrá na niektorých
+   Smart TV (staršie ako Chromium 84, cca. pred rokom 2020) v ohýbačoch vôbec
+   nepodporujú (v grid kontexte to nie je problém, gap tam prišiel skôr).
+   Klasický pred-`gap` trik: záporný margin na kontajneri + margin na
+   položkách, len keď `gap` prehliadač nevie. Konkrétna hodnota zodpovedá
+   Tailwind `gap-*` triede, ktorá je na tom istom elemente vedľa `.pill-row`.
+--------------------------------------------------------------------- */
+@supports not (gap: 1px) {
+  .pill-row.gap-2 { margin-top: -0.5rem; margin-left: -0.5rem; }
+  .pill-row.gap-2 > * { margin-top: 0.5rem; margin-left: 0.5rem; }
+
+  .pill-row.gap-2\.5 { margin-top: -0.625rem; margin-left: -0.625rem; }
+  .pill-row.gap-2\.5 > * { margin-top: 0.625rem; margin-left: 0.625rem; }
+
+  .pill-row.gap-4 { margin-top: -1rem; margin-left: -1rem; }
+  .pill-row.gap-4 > * { margin-top: 1rem; margin-left: 1rem; }
+}
+
 .movie-card {
   transition: transform .35s cubic-bezier(.2,.8,.2,1), box-shadow .35s ease;
 }
