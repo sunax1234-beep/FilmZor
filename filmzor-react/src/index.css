@@ -10,9 +10,14 @@
   font-family: 'Poppins', system-ui, sans-serif;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   background: var(--bg);
+  overflow-x: hidden;
 }
 
 ::-webkit-scrollbar { height: 8px; width: 8px; }
