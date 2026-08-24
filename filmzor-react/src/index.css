@@ -178,43 +178,19 @@ html.tv-mode {
   font-size: 130%;
 }
 
+/* Počet stĺpcov (--tv-grid-cols) počíta useIsTvDevice.js podľa FYZICKEJ
+   šírky obrazovky (innerWidth × devicePixelRatio), nie CSS `@media
+   (min-width)` — niektoré Android TV boxy hlásia innerWidth len ako
+   zlomok skutočného rozlíšenia (napr. dpr=2 → 960 namiesto fyzických
+   1920), čo by so starým `@media (min-width: 1920px)` prístupom vybralo
+   o polovicu menej stĺpcov, než má obrazovka miesta — všetko by tak
+   vychádzalo cca 2× väčšie, než malo (nahradené 2026-08, viď
+   useIsTvDevice.js gridColsForWidth).
+   Medzera (gap) rastie so škálou o niečo hrubšie krokovanie — presnosť tu
+   nie je kritická, len aby sa na 4K nezdala priúzka. */
 .tv-mode .movie-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.75rem 2.25rem;
-}
-
-/* Na väčších TV obrazovkách (Full HD, 4K) by 4 stĺpce dali neprimerane
-   veľké obaly — pridáme stĺpce namiesto toho, aby obaly rástli s
-   obrazovkou. min-width je vždy v CSS px viewportu, takže na to
-   `html.tv-mode { font-size: 130% }` vyššie nemá vplyv. */
-@media (min-width: 1200px) {
-  .tv-mode .movie-grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1920px) {
-  .tv-mode .movie-grid {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 2rem 2.5rem;
-  }
-}
-
-/* Skutočné 4K TV (natívny viewport 2560/3840px, nie len Full HD škálované
-   na 1080p) potrebujú ďalšie stĺpce, inak by pri fixných 8 stĺpcoch obal
-   zaberal dvojnásobnú fyzickú plochu oproti Full HD obrazovke rovnakej
-   veľkosti. */
-@media (min-width: 2560px) {
-  .tv-mode .movie-grid {
-    grid-template-columns: repeat(10, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 3840px) {
-  .tv-mode .movie-grid {
-    grid-template-columns: repeat(14, minmax(0, 1fr));
-    gap: 2.25rem 2.75rem;
-  }
+  grid-template-columns: repeat(var(--tv-grid-cols, 4), minmax(0, 1fr));
+  gap: var(--tv-grid-gap, 1.75rem 2.25rem);
 }
 
 .tv-mode .movie-card .play-overlay > div {
